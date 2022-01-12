@@ -33,7 +33,7 @@ train:
 
 model:
   weights: 'data/yolov5sblk.pt'
-  unet_weights: 'data/unet_head.pt'
+  unet_weights: 'data/unet_last.pt'
   head: 'unet_default'
   db_weights: ''
   act: 'leaky'

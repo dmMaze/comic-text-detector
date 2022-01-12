@@ -1,6 +1,6 @@
 import torch
 
-import random
+
 from torch.optim import SGD, Adam, lr_scheduler
 from tqdm import tqdm
 import math
@@ -20,6 +20,7 @@ os.environ['NUMEXPR_MAX_THREADS'] = str(numexpr.detect_number_of_cores())
 
 from dataset import create_dataloader
 from utils.general import LOGGER, Loggers, CUDA, DEVICE
+import random
 
 torch.random.manual_seed(0)
 random.seed(0)
@@ -199,7 +200,7 @@ if __name__ == '__main__':
     hyp['data']['aug_param']['neg'] = 0.3
     hyp['data']['aug_param']['size_range'] = [0.85, 1.1]
 
-    hyp['train']['lr0'] = 0.002
+    hyp['train']['lr0'] = 0.004
     hyp['train']['lrf'] = 0.005
     hyp['train']['weight_decay'] = 0.00002
     hyp['train']['epochs'] = 120

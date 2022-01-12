@@ -42,75 +42,68 @@ class double_conv_c3(nn.Module):
         x = self.conv(x)
         return x
 
-class UnetHead(nn.Module):
-    def __init__(self, act=True) -> None:
+# class UnetHead(nn.Module):
+#     def __init__(self, act=True) -> None:
 
-        super(UnetHead, self).__init__()
-        self.down_conv1 = double_conv_c3(512, 512, 2, act=act)
-        self.down_conv2 = double_conv_c3(512, 512, 2, act=act)
-        self.upconv0 = double_conv_up_c3(0, 512, 256, act=act)
-        self.upconv1 = double_conv_up_c3(256, 512, 256, act=act)
-        self.upconv2 = double_conv_up_c3(256, 512, 256, act=act)
-        self.upconv3 = double_conv_up_c3(0, 512, 256, act=act)
-        self.upconv4 = double_conv_up_c3(128, 256, 128, act=act)
-        self.upconv5 = double_conv_up_c3(64, 128, 64, act=act)
-        # self.conv_mask = C3(64, 32, act=act)
-        self.upconv6 = nn.Sequential(
-            nn.PixelShuffle(2),
-            nn.Conv2d(8, 1, kernel_size=1),
-            nn.Sigmoid()
-        )
+#         super(UnetHead, self).__init__()
+#         self.down_conv1 = double_conv_c3(512, 512, 2, act=act)
+#         self.down_conv2 = double_conv_c3(512, 512, 2, act=act)
+#         self.upconv0 = double_conv_up_c3(0, 512, 256, act=act)
+#         self.upconv1 = double_conv_up_c3(256, 512, 256, act=act)
+#         self.upconv2 = double_conv_up_c3(256, 512, 256, act=act)
+#         self.upconv3 = double_conv_up_c3(0, 512, 256, act=act)
+#         self.upconv4 = double_conv_up_c3(128, 256, 128, act=act)
+#         self.upconv5 = double_conv_up_c3(64, 128, 64, act=act)
+#         # self.conv_mask = C3(64, 32, act=act)
+#         self.upconv6 = nn.Sequential(
+#             nn.PixelShuffle(2),
+#             nn.Conv2d(8, 1, kernel_size=1),
+#             nn.Sigmoid()
+#         )
 
-    def forward(self, f160, f80, f40, f20, f3, forward_mode=TEXTDET_MASK):
-        # input: 640@3
-        d10 = self.down_conv1(f3) # 512@10
-        d5 = self.down_conv2(d10) # 512@5
-        u10 = self.upconv0(d5)  # 256@10
-        u20 = self.upconv1(torch.cat([u10, d10], dim = 1)) # 256@20
-        u40 = self.upconv2(torch.cat([f20, u20], dim = 1)) # 256@40
+#     def forward(self, f160, f80, f40, f20, f3, forward_mode=TEXTDET_MASK):
+#         # input: 640@3
+#         d10 = self.down_conv1(f3) # 512@10
+#         d5 = self.down_conv2(d10) # 512@5
+#         u10 = self.upconv0(d5)  # 256@10
+#         u20 = self.upconv1(torch.cat([u10, d10], dim = 1)) # 256@20
+#         u40 = self.upconv2(torch.cat([f20, u20], dim = 1)) # 256@40
 
-        if forward_mode == TEXTDET_DET:
-            return f80, f40, u40
-        else:
-            u80 = self.upconv3(torch.cat([f40, u40], dim = 1)) # 256@80
-            u160 = self.upconv4(torch.cat([f80, u80], dim = 1)) # 128@160
-            u320 = self.upconv5(torch.cat([f160, u160], dim = 1)) # 64@320
-            u320 = self.conv_mask(u320)
-            mask = self.upconv6(u320)
-            if forward_mode == TEXTDET_MASK:
-                return mask
-            else:
-                return mask, [f80, f40, u40]
+#         if forward_mode == TEXTDET_DET:
+#             return f80, f40, u40
+#         else:
+#             u80 = self.upconv3(torch.cat([f40, u40], dim = 1)) # 256@80
+#             u160 = self.upconv4(torch.cat([f80, u80], dim = 1)) # 128@160
+#             u320 = self.upconv5(torch.cat([f160, u160], dim = 1)) # 64@320
+#             u320 = self.conv_mask(u320)
+#             mask = self.upconv6(u320)
+#             if forward_mode == TEXTDET_MASK:
+#                 return mask
+#             else:
+#                 return mask, [f80, f40, u40]
             
-    def init_weight(self, init_func):
-        self.apply(init_func)
+#     def init_weight(self, init_func):
+#         self.apply(init_func)
 
 class UnetHead(nn.Module):
     def __init__(self, act=True) -> None:
 
         super(UnetHead, self).__init__()
         self.down_conv1 = double_conv_c3(512, 512, 2, act=act)
-        # self.down_conv2 = double_conv_c3(512, 512, 2, act=act)
         self.upconv0 = double_conv_up_c3(0, 512, 256, act=act)
-        # self.upconv1 = double_conv_up_c3(256, 512, 256, act=act)
         self.upconv2 = double_conv_up_c3(256, 512, 256, act=act)
         self.upconv3 = double_conv_up_c3(0, 512, 256, act=act)
         self.upconv4 = double_conv_up_c3(128, 256, 128, act=act)
         self.upconv5 = double_conv_up_c3(64, 128, 64, act=act)
-        # self.conv_mask = C3(64, 32, act=act)
         self.upconv6 = nn.Sequential(
             nn.ConvTranspose2d(64, 1, kernel_size=4, stride = 2, padding=1, bias=False),
-            # nn.PixelShuffle(2),
-            # nn.Conv2d(8, 1, kernel_size=1),
             nn.Sigmoid()
         )
 
     def forward(self, f160, f80, f40, f20, f3, forward_mode=TEXTDET_MASK):
         # input: 640@3
         d10 = self.down_conv1(f3) # 512@10
-        # d5 = self.down_conv2(d10) # 512@5
         u20 = self.upconv0(d10)  # 256@10
-        # u20 = self.upconv1(torch.cat([u10, d10], dim = 1)) # 256@20
         u40 = self.upconv2(torch.cat([f20, u20], dim = 1)) # 256@40
 
         if forward_mode == TEXTDET_DET:
@@ -119,7 +112,6 @@ class UnetHead(nn.Module):
             u80 = self.upconv3(torch.cat([f40, u40], dim = 1)) # 256@80
             u160 = self.upconv4(torch.cat([f80, u80], dim = 1)) # 128@160
             u320 = self.upconv5(torch.cat([f160, u160], dim = 1)) # 64@320
-            # u320 = self.conv_mask(u320)
             mask = self.upconv6(u320)
             if forward_mode == TEXTDET_MASK:
                 return mask
@@ -228,7 +220,7 @@ class TextDetector(nn.Module):
 
     def initialize_db(self, unet_weights):
         self.dbnet = DBHead(64)
-        self.seg_net.load_state_dict(torch.load(unet_weights, map_location='cpu'))
+        self.seg_net.load_state_dict(torch.load(unet_weights, map_location='cpu')['weights'])
         self.dbnet.init_weight(init_weights)
         self.dbnet.upconv3 = copy.deepcopy(self.seg_net.upconv3)
         self.dbnet.upconv4 = copy.deepcopy(self.seg_net.upconv4)
@@ -236,7 +228,7 @@ class TextDetector(nn.Module):
         del self.seg_net.upconv4
         del self.seg_net.upconv5
         del self.seg_net.upconv6
-        del self.seg_net.conv_mask
+        # del self.seg_net.conv_mask
     
     def train_db(self):
         self.forward_mode = TEXTDET_DET

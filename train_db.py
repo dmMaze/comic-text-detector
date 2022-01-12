@@ -1,4 +1,3 @@
-from torch import random
 from torch.autograd.grad_mode import F
 from torch.nn.functional import sigmoid
 from torch.nn.modules.loss import CrossEntropyLoss
@@ -23,6 +22,7 @@ os.environ['NUMEXPR_MAX_THREADS'] = str(numexpr.detect_number_of_cores())
 from db_dataset import create_dataloader
 from utils.general import LOGGER, Loggers, CUDA, DEVICE
 import time
+import random
 
 torch.random.manual_seed(0)
 random.seed(0)
