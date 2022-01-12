@@ -19,7 +19,7 @@ train:
   optimizer: 'adam'
   batch_size: 4
   lr0: 0.01
-  lrf: 0.01
+  lrf: 0.005
   momentum: 0.937
   weight_decay: 0.0005
   warmup_epochs: 3.0  # warmup epochs (fractions ok)
@@ -30,8 +30,8 @@ train:
   accumulation_steps: 1
 
 model:
-  weights: 'yolov5sblk.pt'
-  head: 'unet_default'
+  weights: 'data/yolov5sblk.pt'
+  act: 'leaky'
 
 logger:
   type: 'wandb'

@@ -1,7 +1,6 @@
 import torch
-torch.random.manual_seed(3)
 
-from torch.nn.modules.loss import CrossEntropyLoss
+import random
 from torch.optim import SGD, Adam, lr_scheduler
 from tqdm import tqdm
 import math
@@ -21,6 +20,11 @@ os.environ['NUMEXPR_MAX_THREADS'] = str(numexpr.detect_number_of_cores())
 
 from dataset import create_dataloader
 from utils.general import LOGGER, Loggers, CUDA, DEVICE
+
+torch.random.manual_seed(0)
+random.seed(0)
+np.random.seed(0)
+
 
 def one_cycle(y1=0.0, y2=1.0, steps=100):
     return lambda x: ((1 - math.cos(x * math.pi / steps)) / 2) * (y2 - y1) + y1
@@ -61,7 +65,7 @@ def train(hyp):
     model = TextDetector(**hyp_model)
     if CUDA:
         model.cuda()
-    params = model.unet.parameters()
+    params = model.seg_net.parameters()
     
     if hyp_train['optimizer'] == 'adam':
         optimizer = Adam(params, lr=hyp_train['lr0'], betas=(hyp_train['momentum'], 0.999), weight_decay=hyp_train['weight_decay'])  # adjust beta1 to momentum
@@ -87,7 +91,7 @@ def train(hyp):
     if hyp_resume['resume_training']:
         LOGGER.info(f'resume traning ... ')
         ckpt = torch.load(hyp_resume['ckpt'], map_location=DEVICE)
-        model.unet.load_state_dict(ckpt['weights'])
+        model.seg_net.load_state_dict(ckpt['weights'])
         optimizer.load_state_dict(ckpt['optimizer'])
         scheduler.load_state_dict(ckpt['scheduler'])
         scheduler.step()
@@ -99,7 +103,7 @@ def train(hyp):
         if hyp_logger['type'] == 'wandb':
             logger = Loggers(hyp)
 
-    num_workers = 6
+    num_workers = 8
     train_img_dir, train_mask_dir, imgsz, augment, aug_param = hyp_data['train_img_dir'], hyp_data['train_mask_dir'], hyp_data['imgsz'], hyp_data['augment'], hyp_data['aug_param']
     val_img_dir, val_mask_dir = hyp_data['val_img_dir'], hyp_data['val_mask_dir']
     train_dataset, train_loader = create_dataloader(train_img_dir, train_mask_dir, imgsz, batch_size, augment, aug_param, shuffle=True, workers=num_workers, cache=hyp_data['cache'])
@@ -117,13 +121,13 @@ def train(hyp):
     for epoch in range(start_epoch, epochs):  # epoch ------------------------------------------------------------------
         
         model.train_mask()
-
+        train_dataset.initialize() 
         pbar = enumerate(train_loader)
         pbar = tqdm(pbar, total=nb, bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}')  # progress bar
         
         m_loss = 0
         for i, (imgs, masks) in pbar:
-            train_dataset.initialize()
+            
             pbar.set_description(f' training size: {train_dataset.img_size}')
             # warm up
             ni = i + nb * epoch
@@ -154,18 +158,18 @@ def train(hyp):
             f1 = 2 * recall * precision / (recall + precision)
             last_ckpt = {'epoch': epoch,
                         'best_f1': best_f1,
-                        'weights': model.unet.state_dict(),
+                        'weights': model.seg_net.state_dict(),
                         'best_val_loss': best_val_loss,
                         'optimizer': optimizer.state_dict(),
                         'scheduler': scheduler.state_dict(),
                         'run_id': logger.wandb.id if logger is not None else None,
                         'date': datetime.now().isoformat(),
                         'hyp': hyp}
-            torch.save(last_ckpt, 'last.pt')
+            torch.save(last_ckpt, 'data/unet_last.pt')
             if best_f1 < f1:
                 best_f1 = f1
                 LOGGER.info(f'saveing model at epoch {epoch}, best val f1: {best_f1}')
-                shutil.copy2('last.pt', 'best.pt')
+                shutil.copy2('data/unet_last.pt', 'data/unet_best.pt')
             LOGGER.info(f'epoch {epoch}/{epochs-1} loss: {m_loss} precision: {precision} recall: {recall}')
             if logger is not None:
                 log_dict = {}
@@ -185,23 +189,24 @@ if __name__ == '__main__':
         hyp = yaml.safe_load(f.read())
 
     
-    hyp['data']['train_img_dir'] = [r'D:/neonbub/datasets/codat_manga_v3/images/train', r'D:/neonbub/datasets/ComicErased/processed']
-    hyp['data']['val_img_dir'] = [r'D:/neonbub/datasets/codat_manga_v3/images/val']
-    hyp['data']['train_mask_dir'] = r'D:/neonbub/datasets/ComicSegV2'
-    hyp['data']['val_mask_dir'] = r'D:/neonbub/datasets/ComicSegV2'
+    hyp['data']['train_img_dir'] = [r'../datasets/codat_manga_v3/images/train', r'../datasets/ComicErased/processed']
+    hyp['data']['train_img_dir'] = [r'../datasets/codat_manga_v3/images/val']
+    hyp['data']['val_img_dir'] = [r'../datasets/codat_manga_v3/images/val']
+    hyp['data']['train_mask_dir'] = r'../datasets/ComicSegV2'
+    hyp['data']['val_mask_dir'] = r'../datasets/ComicSegV2'
     hyp['data']['imgsz'] = 1024
     hyp['data']['cache'] = False
     hyp['data']['aug_param']['neg'] = 0.3
     hyp['data']['aug_param']['size_range'] = [0.85, 1.1]
 
-    hyp['train']['lr0'] = 0.0002
+    hyp['train']['lr0'] = 0.002
     hyp['train']['lrf'] = 0.005
     hyp['train']['weight_decay'] = 0.00002
-    hyp['train']['epochs'] = 80
-    hyp['train']['accumulation_steps'] = 2
-    hyp['train']['batch_size'] = 6
+    hyp['train']['epochs'] = 120
+    hyp['train']['accumulation_steps'] = 4
+    hyp['train']['batch_size'] = 4
     hyp['logger']['type'] = 'wandb'
 
-    hyp['resume']['resume_training'] = True
+    hyp['resume']['resume_training'] = False
     hyp['resume']['ckpt'] = 'last.pt'
     train(hyp)

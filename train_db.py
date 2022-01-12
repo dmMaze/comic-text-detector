@@ -25,7 +25,8 @@ from utils.general import LOGGER, Loggers, CUDA, DEVICE
 import time
 
 torch.random.manual_seed(0)
-random.manual_seed(0)
+random.seed(0)
+np.random.seed(0)
 
 def one_cycle(y1=0.0, y2=1.0, steps=100):
     return lambda x: ((1 - math.cos(x * math.pi / steps)) / 2) * (y2 - y1) + y1
@@ -185,12 +186,12 @@ def train(hyp):
                         'best_val_loss': best_val_loss,
                         'optimizer': optimizer.state_dict(),
                         'scheduler': scheduler.state_dict(),
-                        'run_id': logger.wandb.id if logger is not None else None,
+                        'run_id': logger.wandb.id if logger.wandb is not None else None,
                         'date': datetime.now().isoformat(),
                         'hyp': hyp}
             torch.save(last_ckpt, 'data/db_last.pt')
             if save_best:
-                shutil.copy('last.pt', 'data/db_best.pt')
+                shutil.copy('data/db_last.pt', 'data/db_best.pt')
             if logger is not None:
                 logger.on_train_epoch_end(epoch, log_dict)
         scheduler.step()
@@ -201,10 +202,11 @@ if __name__ == '__main__':
     with open(hyp_p, 'r', encoding='utf8') as f:
         hyp = yaml.safe_load(f.read())
 
-    # hyp['data']['train_img_dir'] = r'D:/neonbub/datasets/pixanimegirls/processed'
-    hyp['data']['train_img_dir'] = [r'D:/neonbub/datasets/codat_manga_v3/images/train', r'D:/neonbub/datasets/codat_manga_v3/images/val', r'D:/neonbub/datasets/pixanimegirls/processed']
-    hyp['data']['train_mask_dir'] = r'D:/neonbub/datasets/TextLines'
-    hyp['data']['val_img_dir'] = r'dataset/db_sub'
+    # hyp['data']['train_img_dir'] = r'../datasets/pixanimegirls/processed'
+    hyp['data']['train_img_dir'] = [r'../datasets/codat_manga_v3/images/train', r'../datasets/codat_manga_v3/images/val', r'../datasets/pixanimegirls/processed']
+    hyp['data']['train_mask_dir'] = r'../datasets/TextLines'
+    # hyp['data']['train_img_dir'] = r'data/dataset/db_sub'
+    hyp['data']['val_img_dir'] = r'data/dataset/db_sub'
     hyp['data']['cache'] = False
     # hyp['data']['aug_param']['size_range'] = [-1]
 
@@ -216,7 +218,7 @@ if __name__ == '__main__':
     # hyp['train']['optimizer'] = 'sgd'
 
     hyp['train']['loss'] = 'bce'
-    hyp['logger']['type'] = 'wandb'
+    hyp['logger']['type'] =  None
 
     hyp['resume']['resume_training'] = False
     hyp['resume']['ckpt'] = 'last.pt'

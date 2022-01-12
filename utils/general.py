@@ -27,6 +27,8 @@ class Loggers():
     def __init__(self, hyp):
         self.type = hyp['logger']['type']
         self.epochs = hyp['train']['epochs']
+        self.wandb = None
+        self.writer = None
         if self.type == LOGGER_WANDB:
             if hyp['logger']['project'] == '':
                 project = 'ComicTextDetector'

@@ -32,10 +32,11 @@ train:
   accumulation_steps: 4
 
 model:
-  weights: 'yolov5sblk.pt'
-  unet_weights: 'unet_head.pt'
+  weights: 'data/yolov5sblk.pt'
+  unet_weights: 'data/unet_head.pt'
   head: 'unet_default'
   db_weights: ''
+  act: 'leaky'
 
 logger:
   type: 'wandb'

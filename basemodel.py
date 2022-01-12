@@ -17,10 +17,10 @@ TEXTDET_DET = 1
 TEXTDET_INFERENCE = 2
 
 class double_conv_up_c3(nn.Module):
-    def __init__(self, in_ch, mid_ch, out_ch):
+    def __init__(self, in_ch, mid_ch, out_ch, act=True):
         super(double_conv_up_c3, self).__init__()
         self.conv = nn.Sequential(
-        C3(in_ch+mid_ch, mid_ch),
+        C3(in_ch+mid_ch, mid_ch, act=act),
         nn.ConvTranspose2d(mid_ch, out_ch, kernel_size=4, stride = 2, padding=1, bias=False),
         nn.BatchNorm2d(out_ch),
         nn.ReLU(inplace=True),
@@ -30,11 +30,11 @@ class double_conv_up_c3(nn.Module):
         return self.conv(x)
 
 class double_conv_c3(nn.Module):
-    def __init__(self, in_ch, out_ch, stride = 1):
+    def __init__(self, in_ch, out_ch, stride=1, act=True):
         super(double_conv_c3, self).__init__()
         if stride > 1 :
             self.down = nn.AvgPool2d(2,stride=2) if stride > 1 else None
-        self.conv = C3(in_ch, out_ch)
+        self.conv = C3(in_ch, out_ch, act=act)
 
     def forward(self, x):
         if self.down is not None :
@@ -43,18 +43,18 @@ class double_conv_c3(nn.Module):
         return x
 
 class UnetHead(nn.Module):
-    def __init__(self) -> None:
+    def __init__(self, act=True) -> None:
 
         super(UnetHead, self).__init__()
-        self.down_conv1 = double_conv_c3(512, 512, 2)
-        self.down_conv2 = double_conv_c3(512, 512, 2)
-        self.upconv0 = double_conv_up_c3(0, 512, 256)
-        self.upconv1 = double_conv_up_c3(256, 512, 256)
-        self.upconv2 = double_conv_up_c3(256, 512, 256)
-        self.upconv3 = double_conv_up_c3(0, 512, 256)
-        self.upconv4 = double_conv_up_c3(128, 256, 128)
-        self.upconv5 = double_conv_up_c3(64, 128, 64)
-        self.conv_mask = C3(64, 32)
+        self.down_conv1 = double_conv_c3(512, 512, 2, act=act)
+        self.down_conv2 = double_conv_c3(512, 512, 2, act=act)
+        self.upconv0 = double_conv_up_c3(0, 512, 256, act=act)
+        self.upconv1 = double_conv_up_c3(256, 512, 256, act=act)
+        self.upconv2 = double_conv_up_c3(256, 512, 256, act=act)
+        self.upconv3 = double_conv_up_c3(0, 512, 256, act=act)
+        self.upconv4 = double_conv_up_c3(128, 256, 128, act=act)
+        self.upconv5 = double_conv_up_c3(64, 128, 64, act=act)
+        # self.conv_mask = C3(64, 32, act=act)
         self.upconv6 = nn.Sequential(
             nn.PixelShuffle(2),
             nn.Conv2d(8, 1, kernel_size=1),
@@ -82,7 +82,50 @@ class UnetHead(nn.Module):
             else:
                 return mask, [f80, f40, u40]
             
+    def init_weight(self, init_func):
+        self.apply(init_func)
 
+class UnetHead(nn.Module):
+    def __init__(self, act=True) -> None:
+
+        super(UnetHead, self).__init__()
+        self.down_conv1 = double_conv_c3(512, 512, 2, act=act)
+        # self.down_conv2 = double_conv_c3(512, 512, 2, act=act)
+        self.upconv0 = double_conv_up_c3(0, 512, 256, act=act)
+        # self.upconv1 = double_conv_up_c3(256, 512, 256, act=act)
+        self.upconv2 = double_conv_up_c3(256, 512, 256, act=act)
+        self.upconv3 = double_conv_up_c3(0, 512, 256, act=act)
+        self.upconv4 = double_conv_up_c3(128, 256, 128, act=act)
+        self.upconv5 = double_conv_up_c3(64, 128, 64, act=act)
+        # self.conv_mask = C3(64, 32, act=act)
+        self.upconv6 = nn.Sequential(
+            nn.ConvTranspose2d(64, 1, kernel_size=4, stride = 2, padding=1, bias=False),
+            # nn.PixelShuffle(2),
+            # nn.Conv2d(8, 1, kernel_size=1),
+            nn.Sigmoid()
+        )
+
+    def forward(self, f160, f80, f40, f20, f3, forward_mode=TEXTDET_MASK):
+        # input: 640@3
+        d10 = self.down_conv1(f3) # 512@10
+        # d5 = self.down_conv2(d10) # 512@5
+        u20 = self.upconv0(d10)  # 256@10
+        # u20 = self.upconv1(torch.cat([u10, d10], dim = 1)) # 256@20
+        u40 = self.upconv2(torch.cat([f20, u20], dim = 1)) # 256@40
+
+        if forward_mode == TEXTDET_DET:
+            return f80, f40, u40
+        else:
+            u80 = self.upconv3(torch.cat([f40, u40], dim = 1)) # 256@80
+            u160 = self.upconv4(torch.cat([f80, u80], dim = 1)) # 128@160
+            u320 = self.upconv5(torch.cat([f160, u160], dim = 1)) # 64@320
+            # u320 = self.conv_mask(u320)
+            mask = self.upconv6(u320)
+            if forward_mode == TEXTDET_MASK:
+                return mask
+            else:
+                return mask, [f80, f40, u40]
+            
     def init_weight(self, init_func):
         self.apply(init_func)
 
@@ -166,16 +209,16 @@ class DBHead(nn.Module):
         return torch.reciprocal(1 + torch.exp(-self.k * (x - y)))
 
 class TextDetector(nn.Module):
-    def __init__(self, weights, map_location='cpu', forward_mode=TEXTDET_MASK):
+    def __init__(self, weights, map_location='cpu', forward_mode=TEXTDET_MASK, act=True):
         super(TextDetector, self).__init__()
         yolov5s_backbone = load_yolov5(weights=weights, map_location=map_location)
         yolov5s_backbone.eval()
         out_indices = [1, 3, 5, 7, 9]
         yolov5s_backbone.out_indices = out_indices
         yolov5s_backbone.model = yolov5s_backbone.model[:max(out_indices)+1]
-        self.seg_net = UnetHead()
+        self.seg_net = UnetHead(act=act)
         self.backbone = yolov5s_backbone
-        self.dbnet = DBHead(64)
+        self.dbnet = None
         self.forward_mode = forward_mode
 
     def train_mask(self):
@@ -184,6 +227,7 @@ class TextDetector(nn.Module):
         self.seg_net.train()
 
     def initialize_db(self, unet_weights):
+        self.dbnet = DBHead(64)
         self.seg_net.load_state_dict(torch.load(unet_weights, map_location='cpu'))
         self.dbnet.init_weight(init_weights)
         self.dbnet.upconv3 = copy.deepcopy(self.seg_net.upconv3)
@@ -225,16 +269,7 @@ def get_base_det_models(model_path, device='cpu', half=False):
 class TextDetBase(nn.Module):
     def __init__(self, model_path, device='cpu', half=False):
         super(TextDetBase, self).__init__()
-        self.blk_det, self.text_seg, self.text_det = get_base_det_models(model_path, device, half)
-        # textdetector_dict = torch.load(model_path, map_location=device)
-        # self.blk_det = load_yolov5(textdetector_dict['blk_det'])
-        # self.text_seg = UnetHead()
-        # self.text_seg.load_state_dict(textdetector_dict['text_seg'])
-        # self.text_det = DBHead(64)
-        # self.text_det.load_state_dict(textdetector_dict['text_det'])
-        # self.blk_det.eval()
-        # self.text_seg.eval()
-        # self.text_det.eval()    
+        self.blk_det, self.text_seg, self.text_det = get_base_det_models(model_path, device, half)   
     def forward(self, features):
         blks, features = self.blk_det(features, detect=True)
         mask, features = self.text_seg(*features, forward_mode=TEXTDET_INFERENCE)
@@ -251,8 +286,8 @@ if __name__ == '__main__':
     model.train_mask()
     summary(model, (3, 640, 640), device=DEVICE)
 
-    model.initialize_db(unet_weights='data/unet_head.pt')
-    model.train_db()
-    summary(model, (3, 640, 640), device=DEVICE)
+    # model.initialize_db(unet_weights='data/unet_head.pt')
+    # model.train_db()
+    # summary(model, (3, 640, 640), device=DEVICE)
 
 

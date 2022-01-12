@@ -69,7 +69,7 @@ def resize_keepasp(im, new_shape=640, scaleup=True, interpolation=cv2.INTER_LINE
 
     return im
 
-def letterbox(im, new_shape=(640, 640), color=(0, 0, 0), auto=False, scaleFill=False, scaleup=True, stride=32):
+def letterbox(im, new_shape=(640, 640), color=(0, 0, 0), auto=False, scaleFill=False, scaleup=True, stride=128):
     # Resize and pad image while meeting stride-multiple constraints
     shape = im.shape[:2]  # current shape [height, width]
     if not isinstance(new_shape, tuple):
@@ -143,7 +143,7 @@ def mini_mosaic(self, img, mask):
     return img, mask
 
 class LoadImageAndMask(Dataset):
-    def __init__(self, img_dir, mask_dir=None, img_size=640, augment=False, aug_param=None, cache=False, stride=64, cache_mask_only=True):
+    def __init__(self, img_dir, mask_dir=None, img_size=640, augment=False, aug_param=None, cache=False, stride=128, cache_mask_only=True):
         if isinstance(img_dir, str):
             self.img_dir = [img_dir]
         elif isinstance(img_dir, list):

@@ -41,6 +41,8 @@ class Conv(nn.Module):
         elif isinstance(act, str):
             if act == 'leaky':
                 self.act = nn.LeakyReLU(0.1, inplace=True)
+            elif act == 'relu':
+                self.act = nn.ReLU(inplace=True)
             else:
                 self.act = None
     def forward(self, x):
