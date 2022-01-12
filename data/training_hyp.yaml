@@ -1,0 +1,44 @@
+data:
+  aug_param:
+    flip_lr: 0.5
+    hsv: 0.3
+    mini_mosaic: 0.5
+    neg: 0.3
+    size_range:
+    - 0.85
+    - 1.1
+  augment: true
+  cache: false
+  imgsz: 1024
+  train_img_dir:
+  - D:/neonbub/datasets/codat_manga_v3/images/train
+  - D:/neonbub/datasets/ComicErased/processed
+  train_mask_dir: D:/neonbub/datasets/ComicSegV2
+  val_img_dir:
+  - D:/neonbub/datasets/codat_manga_v3/images/val
+  val_mask_dir: D:/neonbub/datasets/ComicSegV2
+logger:
+  project: ''
+  run_id: ''
+  type: wandb
+model:
+  head: unet_default
+  weights: yolov5sblk.pt
+resume:
+  ckpt: last.pt
+  resume_training: true
+train:
+  accumulation_steps: 2
+  batch_size: 6
+  epochs: 80
+  eval_interval: 1
+  linear_lr: false
+  loss: dice
+  lr0: 0.0002
+  lrf: 0.005
+  momentum: 0.937
+  optimizer: adam
+  warmup_bias_lr: 0.1
+  warmup_epochs: 3.0
+  warmup_momentum: 0.8
+  weight_decay: 2.0e-05

@@ -1,0 +1,45 @@
+data:
+  train_img_dir: 'dataset/train'
+  train_mask_dir: ''
+  val_img_dir: 'dataset/val'
+  val_mask_dir: ''
+  imgsz: 1024
+  augment: True
+  cache: True
+  aug_param:
+    hsv: 0.3
+    mini_mosaic: 0.5
+    flip_lr: 0.5
+    neg: 0.3
+    size_range: [0.7, 1]
+
+train:
+  epochs: 15
+  linear_lr: False
+  optimizer: 'adam'
+  batch_size: 4
+  lr0: 0.01
+  lrf: 0.01
+  momentum: 0.937
+  weight_decay: 0.0005
+  warmup_epochs: 3.0  # warmup epochs (fractions ok)
+  warmup_momentum: 0.8  # warmup initial momentum
+  warmup_bias_lr: 0.1  # warmup initial bias lr
+  eval_interval: 1
+  loss: 'dice'
+  accumulation_steps: 1
+
+model:
+  weights: 'yolov5sblk.pt'
+  head: 'unet_default'
+
+logger:
+  type: 'wandb'
+  run_id: ''
+  project: ''
+  
+
+resume:
+  resume_training: False
+  ckpt: ''
+  
