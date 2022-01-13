@@ -278,8 +278,10 @@ if __name__ == '__main__':
     train_dataset, train_loader = create_dataloader(train_img_dir, train_mask_dir, imgsz, batch_size, augment, aug_param, shuffle=True, workers=num_workers, cache=hyp_data['cache'], with_ann=True)
 
     for ii in range(10):
-        train_dataset.initialize()
+        
         for batchs in train_loader:
+            train_dataset.initialize()
+            print(train_dataset.img_size)
             img = batchs['imgs'][0]
             
             img = train_dataset.inverse_transform(img)

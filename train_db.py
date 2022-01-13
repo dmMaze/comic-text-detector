@@ -136,7 +136,7 @@ def train(hyp):
         m_loss_t = 0
         m_loss_b = 0
         for i, batchs in pbar:
-            if i % 256 == 0:
+            if (i+2) % 256 == 0:
                 train_dataset.initialize()
                 pbar.set_description(f' training size: {train_dataset.img_size}')
             # warm up
@@ -156,7 +156,7 @@ def train(hyp):
                 metric = criterion(preds, batchs, use_bce)
             loss = metric['loss'] / accumulation_steps
             scaler.scale(loss).backward()
-            if i % accumulation_steps == 0:
+            if (i+1) % accumulation_steps == 0:
                 scaler.step(optimizer)
                 scaler.update()
                 optimizer.zero_grad()
@@ -218,7 +218,7 @@ if __name__ == '__main__':
     # hyp['train']['optimizer'] = 'sgd'
 
     hyp['train']['loss'] = 'bce'
-    hyp['logger']['type'] =  None
+    hyp['logger']['type'] =  'wandb'
 
     hyp['resume']['resume_training'] = False
     hyp['resume']['ckpt'] = 'last.pt'
