@@ -34,7 +34,6 @@ from utils.general import LOGGER, Loggers, CUDA, DEVICE
 
 WORLD_SIZE = int(os.getenv('WORLD_SIZE', 1))  # DPP
 NUM_THREADS = min(8, max(1, os.cpu_count() - 1))  # number of multiprocessing threads
-
 IMG_EXT = ['.bmp', '.jpg', '.png', '.jpeg']
 
 def augment_hsv(im, hgain=0.5, sgain=0.5, vgain=0.5):

@@ -229,7 +229,7 @@ def create_dataloader(img_dir, ann_dir, imgsz, batch_size, augment=False, aug_pa
     return dataset, loader
 
 if __name__ == '__main__':
-    img_dir = r'dataset/db_sub'
+    img_dir = r'data\dataset\result'
     hyp_p = r'data/train_db_hyp.yaml'
     with open(hyp_p, 'r', encoding='utf8') as f:
         hyp = yaml.safe_load(f.read())

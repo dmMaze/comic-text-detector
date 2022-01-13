@@ -42,48 +42,48 @@ class double_conv_c3(nn.Module):
         x = self.conv(x)
         return x
 
-# class UnetHead(nn.Module):
-#     def __init__(self, act=True) -> None:
+class UnetHead_DEP(nn.Module):
+    def __init__(self, act=True) -> None:
 
-#         super(UnetHead, self).__init__()
-#         self.down_conv1 = double_conv_c3(512, 512, 2, act=act)
-#         self.down_conv2 = double_conv_c3(512, 512, 2, act=act)
-#         self.upconv0 = double_conv_up_c3(0, 512, 256, act=act)
-#         self.upconv1 = double_conv_up_c3(256, 512, 256, act=act)
-#         self.upconv2 = double_conv_up_c3(256, 512, 256, act=act)
-#         self.upconv3 = double_conv_up_c3(0, 512, 256, act=act)
-#         self.upconv4 = double_conv_up_c3(128, 256, 128, act=act)
-#         self.upconv5 = double_conv_up_c3(64, 128, 64, act=act)
-#         # self.conv_mask = C3(64, 32, act=act)
-#         self.upconv6 = nn.Sequential(
-#             nn.PixelShuffle(2),
-#             nn.Conv2d(8, 1, kernel_size=1),
-#             nn.Sigmoid()
-#         )
+        super(UnetHead_DEP, self).__init__()
+        self.down_conv1 = double_conv_c3(512, 512, 2, act=act)
+        self.down_conv2 = double_conv_c3(512, 512, 2, act=act)
+        self.upconv0 = double_conv_up_c3(0, 512, 256, act=act)
+        self.upconv1 = double_conv_up_c3(256, 512, 256, act=act)
+        self.upconv2 = double_conv_up_c3(256, 512, 256, act=act)
+        self.upconv3 = double_conv_up_c3(0, 512, 256, act=act)
+        self.upconv4 = double_conv_up_c3(128, 256, 128, act=act)
+        self.upconv5 = double_conv_up_c3(64, 128, 64, act=act)
+        self.conv_mask = C3(64, 32, act=act)
+        self.upconv6 = nn.Sequential(
+            nn.PixelShuffle(2),
+            nn.Conv2d(8, 1, kernel_size=1),
+            nn.Sigmoid()
+        )
 
-#     def forward(self, f160, f80, f40, f20, f3, forward_mode=TEXTDET_MASK):
-#         # input: 640@3
-#         d10 = self.down_conv1(f3) # 512@10
-#         d5 = self.down_conv2(d10) # 512@5
-#         u10 = self.upconv0(d5)  # 256@10
-#         u20 = self.upconv1(torch.cat([u10, d10], dim = 1)) # 256@20
-#         u40 = self.upconv2(torch.cat([f20, u20], dim = 1)) # 256@40
+    def forward(self, f160, f80, f40, f20, f3, forward_mode=TEXTDET_MASK):
+        # input: 640@3
+        d10 = self.down_conv1(f3) # 512@10
+        d5 = self.down_conv2(d10) # 512@5
+        u10 = self.upconv0(d5)  # 256@10
+        u20 = self.upconv1(torch.cat([u10, d10], dim = 1)) # 256@20
+        u40 = self.upconv2(torch.cat([f20, u20], dim = 1)) # 256@40
 
-#         if forward_mode == TEXTDET_DET:
-#             return f80, f40, u40
-#         else:
-#             u80 = self.upconv3(torch.cat([f40, u40], dim = 1)) # 256@80
-#             u160 = self.upconv4(torch.cat([f80, u80], dim = 1)) # 128@160
-#             u320 = self.upconv5(torch.cat([f160, u160], dim = 1)) # 64@320
-#             u320 = self.conv_mask(u320)
-#             mask = self.upconv6(u320)
-#             if forward_mode == TEXTDET_MASK:
-#                 return mask
-#             else:
-#                 return mask, [f80, f40, u40]
+        if forward_mode == TEXTDET_DET:
+            return f80, f40, u40
+        else:
+            u80 = self.upconv3(torch.cat([f40, u40], dim = 1)) # 256@80
+            u160 = self.upconv4(torch.cat([f80, u80], dim = 1)) # 128@160
+            u320 = self.upconv5(torch.cat([f160, u160], dim = 1)) # 64@320
+            u320 = self.conv_mask(u320)
+            mask = self.upconv6(u320)
+            if forward_mode == TEXTDET_MASK:
+                return mask
+            else:
+                return mask, [f80, f40, u40]
             
-#     def init_weight(self, init_func):
-#         self.apply(init_func)
+    def init_weight(self, init_func):
+        self.apply(init_func)
 
 class UnetHead(nn.Module):
     def __init__(self, act=True) -> None:
@@ -250,7 +250,7 @@ class TextDetector(nn.Module):
 def get_base_det_models(model_path, device='cpu', half=False):
     textdetector_dict = torch.load(model_path, map_location=device)
     blk_det = load_yolov5(textdetector_dict['blk_det'])
-    text_seg = UnetHead()
+    text_seg = UnetHead_DEP()
     text_seg.load_state_dict(textdetector_dict['text_seg'])
     text_det = DBHead(64)
     text_det.load_state_dict(textdetector_dict['text_det'])
