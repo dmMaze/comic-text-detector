@@ -3,7 +3,9 @@ import numpy as np
 import pyclipper
 from shapely.geometry import Polygon
 from collections import namedtuple
-np.seterr(divide='ignore')
+import warnings
+warnings.filterwarnings('ignore')
+
 
 def iou_rotate(box_a, box_b, method='union'):
     rect_a = cv2.minAreaRect(box_a)

@@ -18,6 +18,7 @@ from torch.utils.data import DataLoader, Dataset, dataloader
 from utils.general import LOGGER, Loggers, CUDA, DEVICE
 from utils.db_utils import MakeBorderMap, MakeShrinkMap
 from dataset import letterbox, augment_hsv, resize_keepasp
+from PIL import Image
 
 WORLD_SIZE = int(os.getenv('WORLD_SIZE', 1))  # DPP
 NUM_THREADS = min(8, max(1, os.cpu_count() - 1))  # number of multiprocessing threads
@@ -37,6 +38,22 @@ def db_val_collate_fn(batchs):
         else:
             ret_batchs[key] = torch.stack(ret_batchs[key], 0)
     return ret_batchs
+
+def rotate_polygons(center, polygons, rotation, new_center, to_int=True):
+    rotation = np.deg2rad(rotation)
+    s, c = np.sin(rotation), np.cos(rotation)
+    polygons = polygons.astype(np.float32)
+    
+    polygons[:, 1::2] -= center[1]
+    polygons[:, ::2] -= center[0]
+    rotated = np.copy(polygons)
+    rotated[:, 1::2] = polygons[:, 1::2] * c - polygons[:, ::2] * s
+    rotated[:, ::2] = polygons[:, 1::2] * s + polygons[:, ::2] * c
+    rotated[:, 1::2] += new_center[1]
+    rotated[:, ::2] += new_center[0]
+    if to_int:
+        return rotated.astype(np.int64)
+    return rotated
 
 class LoadImageAndAnnotations(Dataset):
     def __init__(self, img_dir, ann_dir=None, img_size=640, augment=False, aug_param=None, cache=False, stride=128, cache_ann_only=True, with_ann=False):
@@ -66,6 +83,8 @@ class LoadImageAndAnnotations(Dataset):
             self._augment_hsv = aug_param['hsv']
             self._flip_lr = aug_param['flip_lr']
             self._neg = aug_param['neg']
+            self._rotate = aug_param['rotate']
+            self.rotate_range = aug_param['rotate_range']
             size_range = aug_param['size_range'] 
             if isinstance(size_range, list) and size_range[0] > 0:
                 min_size = round(img_size * size_range[0] / stride ) * stride
@@ -153,6 +172,21 @@ class LoadImageAndAnnotations(Dataset):
             ann[:, :, 0] = 1 - ann[:, :, 0]
         if random.random() < self._neg:
             img = 255 - img
+        if random.random() < self._rotate:
+            degrees = random.uniform(self.rotate_range[0], self.rotate_range[1])
+            if abs(degrees) > 15:
+                img = Image.fromarray(img)
+                center = (img.width/2, img.height/2)
+                ann[:, :, 0] *= img.width
+                ann[:, :, 1] *= img.height
+                ann = ann.reshape(len(ann), -1)
+                img = img.rotate(degrees, resample=Image.BILINEAR, expand=1)
+                new_center = (img.width/2, img.height/2)
+                ann = rotate_polygons(center, ann, degrees, new_center, to_int=False)
+                ann = ann.reshape(len(ann), -1, 2)
+                ann[:, :, 0] /= img.width
+                ann[:, :, 1] /= img.height
+                img = np.asarray(img)
         return img, ann
 
     def inverse_transform(self, img: torch.Tensor, scale=255, to_uint8=True):
@@ -229,7 +263,7 @@ def create_dataloader(img_dir, ann_dir, imgsz, batch_size, augment=False, aug_pa
     return dataset, loader
 
 if __name__ == '__main__':
-    img_dir = r'data\dataset\result'
+    img_dir = r'data\dataset\db_sub'
     hyp_p = r'data/train_db_hyp.yaml'
     with open(hyp_p, 'r', encoding='utf8') as f:
         hyp = yaml.safe_load(f.read())
@@ -237,7 +271,7 @@ if __name__ == '__main__':
     hyp['data']['cache'] = False
     hyp_train, hyp_data, hyp_model, hyp_logger, hyp_resume = hyp['train'], hyp['data'], hyp['model'], hyp['logger'], hyp['resume']
     batch_size = hyp_train['batch_size']
-    batch_size = 4
+    batch_size = 1
     num_workers = 0
     train_img_dir, train_mask_dir, imgsz, augment, aug_param = hyp_data['train_img_dir'], hyp_data['train_mask_dir'], hyp_data['imgsz'], hyp_data['augment'], hyp_data['aug_param']
 

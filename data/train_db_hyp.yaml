@@ -5,22 +5,25 @@ data:
   val_mask_dir: ''
   imgsz: 1024
   augment: True
+  num_workers: 8
   cache: True
   aug_param:
     hsv: 0.3
     mini_mosaic: 0.5
     flip_lr: 0.5
     neg: 0.3
-    size_range: [0.85, 1]
+    size_range: [0.85, 1.1]
+    rotate: 0.4
+    rotate_range: [-70, 70]
   save_dir: 'results'
 
 train:
-  epochs: 100
+  epochs: 120
   linear_lr: False
   optimizer: 'adam'
   batch_size: 4
   lr0: 0.01
-  lrf: 0.005
+  lrf: 0.002
   warm_up: True
   momentum: 0.937
   weight_decay: 0.00002
@@ -33,8 +36,7 @@ train:
 
 model:
   weights: 'data/yolov5sblk.pt'
-  unet_weights: 'data/unet_last.pt'
-  head: 'unet_default'
+  unet_weights: 'data/unet_best.pt'
   db_weights: ''
   act: 'leaky'
 

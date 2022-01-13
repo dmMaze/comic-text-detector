@@ -109,11 +109,10 @@ def train(hyp):
         # if hyp_logger['type'] == 'wandb':
         logger = Loggers(hyp)
 
-    num_workers = 8
     train_img_dir, train_mask_dir, imgsz, augment, aug_param = hyp_data['train_img_dir'], hyp_data['train_mask_dir'], hyp_data['imgsz'], hyp_data['augment'], hyp_data['aug_param']
     val_img_dir, val_mask_dir = hyp_data['val_img_dir'], hyp_data['val_mask_dir']
-    train_dataset, train_loader = create_dataloader(train_img_dir, train_mask_dir, imgsz, batch_size, augment, aug_param, shuffle=True, workers=num_workers, cache=hyp_data['cache'])
-    val_dataset, val_loader = create_dataloader(val_img_dir, val_mask_dir, imgsz, batch_size, augment=False, shuffle=False, workers=num_workers, cache=hyp_data['cache'], with_ann=True)
+    train_dataset, train_loader = create_dataloader(train_img_dir, train_mask_dir, imgsz, batch_size, augment, aug_param, shuffle=True, workers=hyp_data['num_workers'], cache=hyp_data['cache'])
+    val_dataset, val_loader = create_dataloader(val_img_dir, val_mask_dir, imgsz, batch_size, augment=False, shuffle=False, workers=hyp_data['num_workers'], cache=hyp_data['cache'], with_ann=True)
     nb = len(train_loader)
     nw = max(round(3 * nb), 700)
 
@@ -129,16 +128,17 @@ def train(hyp):
     post_process = SegDetectorRepresenter(thresh=0.5)
     best_f1 = -1
     for epoch in range(start_epoch, epochs):  # epoch ------------------------------------------------------------------
-        train_dataset.initialize()
         model.train_db()
         pbar = enumerate(train_loader)
         pbar = tqdm(pbar, total=nb, bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}')  # progress bar
-        pbar.set_description(f' training size: {train_dataset.img_size}')
         m_loss = 0
         m_loss_s = 0
         m_loss_t = 0
         m_loss_b = 0
         for i, batchs in pbar:
+            if i % 256 == 0:
+                train_dataset.initialize()
+                pbar.set_description(f' training size: {train_dataset.img_size}')
             # warm up
             if hyp_train['warm_up']:
                 ni = i + nb * epoch
@@ -211,10 +211,10 @@ if __name__ == '__main__':
     # hyp['data']['aug_param']['size_range'] = [-1]
 
     hyp['train']['lr0'] = 0.01
-    hyp['train']['lrf'] = 0.005
+    hyp['train']['lrf'] = 0.002
     hyp['train']['weight_decay'] = 0.00002
     hyp['train']['batch_size'] = 4
-    hyp['train']['epochs'] = 100
+    hyp['train']['epochs'] = 120
     # hyp['train']['optimizer'] = 'sgd'
 
     hyp['train']['loss'] = 'bce'

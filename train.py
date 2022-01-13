@@ -191,7 +191,7 @@ if __name__ == '__main__':
 
     
     hyp['data']['train_img_dir'] = [r'../datasets/codat_manga_v3/images/train', r'../datasets/ComicErased/processed']
-    hyp['data']['train_img_dir'] = [r'../datasets/codat_manga_v3/images/val']
+    # hyp['data']['train_img_dir'] = [r'../datasets/codat_manga_v3/images/val']
     hyp['data']['val_img_dir'] = [r'../datasets/codat_manga_v3/images/val']
     hyp['data']['train_mask_dir'] = r'../datasets/ComicSegV2'
     hyp['data']['val_mask_dir'] = r'../datasets/ComicSegV2'
@@ -208,6 +208,6 @@ if __name__ == '__main__':
     hyp['train']['batch_size'] = 4
     hyp['logger']['type'] = 'wandb'
 
-    hyp['resume']['resume_training'] = False
-    hyp['resume']['ckpt'] = 'last.pt'
+    hyp['resume']['resume_training'] = True
+    hyp['resume']['ckpt'] = 'data/unet_last.pt'
     train(hyp)
