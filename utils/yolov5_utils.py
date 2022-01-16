@@ -84,7 +84,7 @@ import time
 import torch
 import torchvision
 
-DEFAULT_LANG_LIST = ['eng', 'jpn']
+DEFAULT_LANG_LIST = ['eng', 'ja']
 
 class Colors:
     # Ultralytics color palette https://ultralytics.com/

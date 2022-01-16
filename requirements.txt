@@ -1,0 +1,2 @@
+onnx>=1.9.0
+onnx-simplifier>=0.3.6

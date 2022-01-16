@@ -4,6 +4,7 @@ import torch
 import cv2
 import numpy as np
 from models.yolo import load_yolov5
+from utils.yolov5_utils import fuse_conv_and_bn
 import glob
 import torch.nn as nn
 from utils.weight_init import init_weights
@@ -42,49 +43,6 @@ class double_conv_c3(nn.Module):
         x = self.conv(x)
         return x
 
-class UnetHead_DEP(nn.Module):
-    def __init__(self, act=True) -> None:
-
-        super(UnetHead_DEP, self).__init__()
-        self.down_conv1 = double_conv_c3(512, 512, 2, act=act)
-        self.down_conv2 = double_conv_c3(512, 512, 2, act=act)
-        self.upconv0 = double_conv_up_c3(0, 512, 256, act=act)
-        self.upconv1 = double_conv_up_c3(256, 512, 256, act=act)
-        self.upconv2 = double_conv_up_c3(256, 512, 256, act=act)
-        self.upconv3 = double_conv_up_c3(0, 512, 256, act=act)
-        self.upconv4 = double_conv_up_c3(128, 256, 128, act=act)
-        self.upconv5 = double_conv_up_c3(64, 128, 64, act=act)
-        self.conv_mask = C3(64, 32, act=act)
-        self.upconv6 = nn.Sequential(
-            nn.PixelShuffle(2),
-            nn.Conv2d(8, 1, kernel_size=1),
-            nn.Sigmoid()
-        )
-
-    def forward(self, f160, f80, f40, f20, f3, forward_mode=TEXTDET_MASK):
-        # input: 640@3
-        d10 = self.down_conv1(f3) # 512@10
-        d5 = self.down_conv2(d10) # 512@5
-        u10 = self.upconv0(d5)  # 256@10
-        u20 = self.upconv1(torch.cat([u10, d10], dim = 1)) # 256@20
-        u40 = self.upconv2(torch.cat([f20, u20], dim = 1)) # 256@40
-
-        if forward_mode == TEXTDET_DET:
-            return f80, f40, u40
-        else:
-            u80 = self.upconv3(torch.cat([f40, u40], dim = 1)) # 256@80
-            u160 = self.upconv4(torch.cat([f80, u80], dim = 1)) # 128@160
-            u320 = self.upconv5(torch.cat([f160, u160], dim = 1)) # 64@320
-            u320 = self.conv_mask(u320)
-            mask = self.upconv6(u320)
-            if forward_mode == TEXTDET_MASK:
-                return mask
-            else:
-                return mask, [f80, f40, u40]
-            
-    def init_weight(self, init_func):
-        self.apply(init_func)
-
 class UnetHead(nn.Module):
     def __init__(self, act=True) -> None:
 
@@ -122,12 +80,12 @@ class UnetHead(nn.Module):
         self.apply(init_func)
 
 class DBHead(nn.Module):
-    def __init__(self, in_channels, k = 50, shrink_with_sigmoid=True):
+    def __init__(self, in_channels, k = 50, shrink_with_sigmoid=True, act=True):
         super().__init__()
         self.k = k
         self.shrink_with_sigmoid = shrink_with_sigmoid
-        self.upconv3 = double_conv_up_c3(0, 512, 256)
-        self.upconv4 = double_conv_up_c3(128, 256, 128)
+        self.upconv3 = double_conv_up_c3(0, 512, 256, act=act)
+        self.upconv4 = double_conv_up_c3(128, 256, 128, act=act)
         self.conv = nn.Sequential(
             nn.Conv2d(128, in_channels, 1),
             nn.BatchNorm2d(in_channels),
@@ -208,6 +166,7 @@ class TextDetector(nn.Module):
         out_indices = [1, 3, 5, 7, 9]
         yolov5s_backbone.out_indices = out_indices
         yolov5s_backbone.model = yolov5s_backbone.model[:max(out_indices)+1]
+        self.act = act
         self.seg_net = UnetHead(act=act)
         self.backbone = yolov5s_backbone
         self.dbnet = None
@@ -219,7 +178,7 @@ class TextDetector(nn.Module):
         self.seg_net.train()
 
     def initialize_db(self, unet_weights):
-        self.dbnet = DBHead(64)
+        self.dbnet = DBHead(64, act=self.act)
         self.seg_net.load_state_dict(torch.load(unet_weights, map_location='cpu')['weights'])
         self.dbnet.init_weight(init_weights)
         self.dbnet.upconv3 = copy.deepcopy(self.seg_net.upconv3)
@@ -247,25 +206,41 @@ class TextDetector(nn.Module):
                 outs = self.seg_net(*outs, forward_mode=forward_mode)
             return self.dbnet(*outs)
 
-def get_base_det_models(model_path, device='cpu', half=False):
+
+
+def get_base_det_models(model_path, device='cpu', half=False, act='leaky'):
     textdetector_dict = torch.load(model_path, map_location=device)
-    blk_det = load_yolov5(textdetector_dict['blk_det'])
-    text_seg = UnetHead_DEP()
+    blk_det = load_yolov5(textdetector_dict['blk_det'], map_location=device)
+    text_seg = UnetHead(act=act)
     text_seg.load_state_dict(textdetector_dict['text_seg'])
-    text_det = DBHead(64)
+    text_det = DBHead(64, act=act)
     text_det.load_state_dict(textdetector_dict['text_det'])
     if half:
         return blk_det.eval().half(), text_seg.eval().half(), text_det.eval().half()
-    return blk_det.eval(), text_seg.eval(), text_det.eval()
+    return blk_det.eval().to(device), text_seg.eval().to(device), text_det.eval().to(device)
 
 class TextDetBase(nn.Module):
-    def __init__(self, model_path, device='cpu', half=False):
+    def __init__(self, model_path, device='cpu', half=False, fuse=False, act='leaky'):
         super(TextDetBase, self).__init__()
-        self.blk_det, self.text_seg, self.text_det = get_base_det_models(model_path, device, half)   
+        self.blk_det, self.text_seg, self.text_det = get_base_det_models(model_path, device, half, act=act)
+        if fuse:
+            self.fuse()
+
+    def fuse(self):
+        def _fuse(model):
+            for m in model.modules():
+                if isinstance(m, (Conv)) and hasattr(m, 'bn'):
+                    m.conv = fuse_conv_and_bn(m.conv, m.bn)  # update conv
+                    delattr(m, 'bn')  # remove batchnorm
+                    m.forward = m.forward_fuse  # update forward
+            return model
+        self.text_seg = _fuse(self.text_seg)
+        self.text_det = _fuse(self.text_det)
+
     def forward(self, features):
         blks, features = self.blk_det(features, detect=True)
         mask, features = self.text_seg(*features, forward_mode=TEXTDET_INFERENCE)
-        lines = self.text_det(*features, step_eval=True)
+        lines = self.text_det(*features, step_eval=False)
         return blks, mask, lines
         # return blks
 

@@ -9,7 +9,7 @@ data:
   cache: True
   aug_param:
     hsv: 0.3
-    mini_mosaic: 0.5
+    mini_mosaic: 0.7
     flip_lr: 0.5
     neg: 0.3
     size_range: [0.85, 1.1]
@@ -18,7 +18,7 @@ data:
   save_dir: 'results'
 
 train:
-  epochs: 120
+  epochs: 160
   linear_lr: False
   optimizer: 'adam'
   batch_size: 4

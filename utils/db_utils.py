@@ -135,17 +135,19 @@ class SegDetectorRepresenter():
         for index in range(num_contours):
             contour = contours[index].squeeze(1)
             points, sside = self.get_mini_boxes(contour)
-            if sside < self.min_size:
+            # if sside < self.min_size:
+            #     continue
+            if sside < 2:
                 continue
             points = np.array(points)
             score = self.box_score_fast(pred, contour)
-            if self.box_thresh > score:
-                continue
+            # if self.box_thresh > score:
+            #     continue
 
             box = self.unclip(points, unclip_ratio=self.unclip_ratio).reshape(-1, 1, 2)
             box, sside = self.get_mini_boxes(box)
-            if sside < self.min_size + 2:
-                continue
+            # if sside < 5:
+            #     continue
             box = np.array(box)
             if not isinstance(dest_width, int):
                 dest_width = dest_width.item()

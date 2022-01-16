@@ -69,7 +69,7 @@ def train(hyp):
         use_bce = True
     shrink_with_sigmoid = not use_bce
 
-    model = TextDetector(hyp_model['weights'], map_location='cpu')
+    model = TextDetector(hyp_model['weights'], map_location='cpu', act=hyp_model['act'])
     model.initialize_db(hyp_model['unet_weights'])
     model.dbnet.shrink_with_sigmoid = shrink_with_sigmoid
     model.train_db()
@@ -123,7 +123,7 @@ def train(hyp):
     best_val_loss = np.inf
 
     accumulation_steps = hyp_train['accumulation_steps']
-    # summary(model, (3, 640, 640), device=DEVICE)
+    summary(model, (3, 640, 640), device=DEVICE)
     metric_cls = QuadMetric()
     post_process = SegDetectorRepresenter(thresh=0.5)
     best_f1 = -1
@@ -214,12 +214,13 @@ if __name__ == '__main__':
     hyp['train']['lrf'] = 0.002
     hyp['train']['weight_decay'] = 0.00002
     hyp['train']['batch_size'] = 4
-    hyp['train']['epochs'] = 120
+    hyp['train']['epochs'] = 160
     # hyp['train']['optimizer'] = 'sgd'
 
     hyp['train']['loss'] = 'bce'
     hyp['logger']['type'] =  'wandb'
 
-    hyp['resume']['resume_training'] = False
-    hyp['resume']['ckpt'] = 'last.pt'
+    hyp['resume']['resume_training'] = True
+    hyp['resume']['ckpt'] = 'data/db_last_bk.pt'
+    # hyp['model']['db_weights'] = r'data/db_last.pt'
     train(hyp)

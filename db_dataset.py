@@ -17,7 +17,8 @@ from torchvision import transforms
 from torch.utils.data import DataLoader, Dataset, dataloader
 from utils.general import LOGGER, Loggers, CUDA, DEVICE
 from utils.db_utils import MakeBorderMap, MakeShrinkMap
-from dataset import letterbox, augment_hsv, resize_keepasp
+from dataset import augment_hsv
+from utils.imgproc_utils import rotate_polygons, letterbox, resize_keepasp
 from PIL import Image
 
 WORLD_SIZE = int(os.getenv('WORLD_SIZE', 1))  # DPP
@@ -38,22 +39,6 @@ def db_val_collate_fn(batchs):
         else:
             ret_batchs[key] = torch.stack(ret_batchs[key], 0)
     return ret_batchs
-
-def rotate_polygons(center, polygons, rotation, new_center, to_int=True):
-    rotation = np.deg2rad(rotation)
-    s, c = np.sin(rotation), np.cos(rotation)
-    polygons = polygons.astype(np.float32)
-    
-    polygons[:, 1::2] -= center[1]
-    polygons[:, ::2] -= center[0]
-    rotated = np.copy(polygons)
-    rotated[:, 1::2] = polygons[:, 1::2] * c - polygons[:, ::2] * s
-    rotated[:, ::2] = polygons[:, 1::2] * s + polygons[:, ::2] * c
-    rotated[:, 1::2] += new_center[1]
-    rotated[:, ::2] += new_center[0]
-    if to_int:
-        return rotated.astype(np.int64)
-    return rotated
 
 class LoadImageAndAnnotations(Dataset):
     def __init__(self, img_dir, ann_dir=None, img_size=640, augment=False, aug_param=None, cache=False, stride=128, cache_ann_only=True, with_ann=False):

@@ -12,11 +12,21 @@ from models.yolo import Detect
 import torch.nn as nn
 import time
 from dataset import letterbox
+from utils.yolov5_utils import fuse_conv_and_bn
 
 class SiLU(nn.Module):  # export-friendly version of nn.SiLU()
     @staticmethod
     def forward(x):
         return x * torch.sigmoid(x)
+
+def concate_models(blk_weights, seg_weights, det_weights, save_path):
+    textdetector_dict = dict()
+    textdetector_dict['blk_det'] = torch.load(blk_weights, map_location='cpu')
+    textdetector_dict['text_seg'] = torch.load(seg_weights, map_location='cpu')['weights']
+    textdetector_dict['text_det'] = torch.load(det_weights, map_location='cpu')['weights']
+    torch.save(textdetector_dict, save_path)
+
+
 
 
 def export_onnx(model, im, file, opset, train=False, simplify=True, dynamic=False, inplace=False):
@@ -42,8 +52,6 @@ def export_onnx(model, im, file, opset, train=False, simplify=True, dynamic=Fals
     model_onnx = onnx.load(f)  # load onnx model
     onnx.checker.check_model(model_onnx)  # check onnx model
 
-    import onnxsim
-
     model_onnx, check = onnxsim.simplify(
         model_onnx,
         dynamic_input_shape=dynamic,
@@ -52,32 +60,38 @@ def export_onnx(model, im, file, opset, train=False, simplify=True, dynamic=Fals
     onnx.save(model_onnx, f)
 
 if __name__ == '__main__':
-    batch_size, imgsz = 1, 1024
+
+    
+
+    batch_size, input_size = 1, 1024
     device = 'cpu'
-    im = torch.zeros(batch_size, 3, imgsz, imgsz).to(device)
+    im = torch.zeros(batch_size, 3, input_size, input_size).to(device)
     model_path = r'data/textdetector.pt'
-    model = TextDetBase(model_path).to(device)
+    model = TextDetBase(model_path, act=True).to(device)
 
     # export_onnx(model, im, model_path, 11)
 
-    img_path = r'dataset\train\manga-2217.jpg'
+    img_path = r'data/dataset/train/manga-2217.jpg'
     img = cv2.imread(img_path)
     img, ratio, (dw, dh) = letterbox(img, new_shape=(1024, 1024), auto=False, stride=64)
-    img = img.transpose((2, 0, 1))[::-1]  # HWC to CHW, BGR to RGB
-    img = np.ascontiguousarray([img]) / 255.
+    # img = img.transpose((2, 0, 1))[::-1]  # HWC to CHW, BGR to RGB
+    # img = np.ascontiguousarray([img]) / 255.
     
-    model_path = r'data\textdetector.pt.onnx'
-    # net = cv2.dnn.readNetFromONNX(model_path)
-
-    cuda = False
-    providers = ['CUDAExecutionProvider', 'CPUExecutionProvider'] if cuda else ['CPUExecutionProvider']
-    session = onnxruntime.InferenceSession(model_path, providers=providers)
-
+    model_path = r'data/textdetector.unfused.pt.onnx'
+    net = cv2.dnn.readNetFromONNX(model_path)
+    blob = cv2.dnn.blobFromImage(img, scalefactor=1 / 255.0, size=(input_size, input_size))
+    net.setInput(blob)
     t0 = time.time()
-    outnames = session.get_outputs()
+    pred = net.forward(net.getUnconnectedOutLayersNames())
+    print(f'{time.time()-t0}')
+    # cuda = True
+    # providers = ['CUDAExecutionProvider', 'CPUExecutionProvider'] if cuda else ['CPUExecutionProvider']
+    # session = onnxruntime.InferenceSession(model_path, providers=providers)
 
-    # print(session.get_outputs()[[0, 2]])
-    y = session.run([outnames[0].name, outnames[4].name, outnames[5].name], {session.get_inputs()[0].name: img.astype(np.float32)})
+    # t0 = time.time()
+    # outnames = session.get_outputs()
+
+    # # print(session.get_outputs()[[0, 2]])
+    # y = session.run([outnames[0].name, outnames[4].name, outnames[5].name], {session.get_inputs()[0].name: img.astype(np.float32)})
     
-    print(f'{time.time() - t0}')
-    print(y)
+    # print(f'{time.time() - t0}')
