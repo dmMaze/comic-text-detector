@@ -256,7 +256,7 @@ class TextDetector:
             else:
                 sub_blkdict_list = [blk_dict]
 
-            # step3: sort textblocks, merge lines...
+            # step3: merge lines, sort textblocks...
             # TODO
             
             # modify textblock to fit its textlines
