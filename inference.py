@@ -237,7 +237,6 @@ class TextDetector:
                         if blk_dict['vertical'] and abs(abs(blk_dict['angle']) - 90) < 10:
                             if abs(lines[jj][0][1] - line[0][1]) > font_size:
                                 split = True
-                        pass
                     if split:
                         current_dict = copy.deepcopy(current_dict)
                         current_dict['lines'] = [line]

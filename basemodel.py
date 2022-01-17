@@ -1,14 +1,14 @@
 from utils.general import CUDA, DEVICE
-from models.yolo import Model
+from models.yolov5.yolo import Model
 import torch
 import cv2
 import numpy as np
-from models.yolo import load_yolov5
+from models.yolov5.yolo import load_yolov5_ckpt
 from utils.yolov5_utils import fuse_conv_and_bn
 import glob
 import torch.nn as nn
 from utils.weight_init import init_weights
-from models.common import C3, Conv
+from models.yolov5.common import C3, Conv
 from torchsummary import summary
 import torch.nn.functional as F
 import copy
@@ -161,7 +161,8 @@ class DBHead(nn.Module):
 class TextDetector(nn.Module):
     def __init__(self, weights, map_location='cpu', forward_mode=TEXTDET_MASK, act=True):
         super(TextDetector, self).__init__()
-        yolov5s_backbone = load_yolov5(weights=weights, map_location=map_location)
+
+        yolov5s_backbone = load_yolov5_ckpt(weights=weights, map_location=map_location)
         yolov5s_backbone.eval()
         out_indices = [1, 3, 5, 7, 9]
         yolov5s_backbone.out_indices = out_indices
@@ -210,7 +211,7 @@ class TextDetector(nn.Module):
 
 def get_base_det_models(model_path, device='cpu', half=False, act='leaky'):
     textdetector_dict = torch.load(model_path, map_location=device)
-    blk_det = load_yolov5(textdetector_dict['blk_det'], map_location=device)
+    blk_det = load_yolov5_ckpt(textdetector_dict['blk_det'], map_location=device)
     text_seg = UnetHead(act=act)
     text_seg.load_state_dict(textdetector_dict['text_seg'])
     text_det = DBHead(64, act=act)
@@ -246,7 +247,9 @@ class TextDetBase(nn.Module):
 
 if __name__ == '__main__':
     device = 'cuda'
-    weights = r'data/yolov5sblk.pt'
+    weights = r'data/yolov5sblk.ckpt'
+
+    # yolov5s_backbone = load_yolov5_ckpt(weights=weights, map_location='cpu')
 
     model = TextDetector(weights, map_location=DEVICE)
     model.to(DEVICE)

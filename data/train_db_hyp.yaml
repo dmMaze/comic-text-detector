@@ -35,8 +35,8 @@ train:
   accumulation_steps: 4
 
 model:
-  weights: 'data/yolov5sblk.pt'
-  unet_weights: 'data/unet_best.pt'
+  weights: 'data/yolov5sblk.ckpt'
+  unet_weights: 'data/unet_best.ckpt'
   db_weights: ''
   act: 'leaky'
 

@@ -3,6 +3,10 @@ import torch
 import torch.nn as nn
 import pkg_resources as pkg
 import torch.nn.functional as F
+import cv2
+import numpy as np
+import time
+import torchvision
 
 def scale_img(img, ratio=1.0, same_shape=False, gs=32):  # img(16,3,256,416)
     # scales img(bs,3,y,x) by ratio constrained to gs-multiple
@@ -75,16 +79,6 @@ def check_version(current='0.0.0', minimum='0.0.0', name='version ', pinned=Fals
         assert result, f'{name}{minimum} required by YOLOv5, but {name}{current} is currently installed'
     else:
         return result
-
-
-
-import cv2
-import numpy as np
-import time
-import torch
-import torchvision
-
-DEFAULT_LANG_LIST = ['eng', 'ja']
 
 class Colors:
     # Ultralytics color palette https://ultralytics.com/
@@ -229,8 +223,7 @@ def xywh2xyxy(x):
     y[:, 3] = x[:, 1] + x[:, 3] / 2  # bottom right y
     return y
 
-
-
+DEFAULT_LANG_LIST = ['eng', 'ja']
 def draw_bbox(pred, img, lang_list=None):
     if lang_list is None:
         lang_list = DEFAULT_LANG_LIST

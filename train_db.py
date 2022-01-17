@@ -189,9 +189,9 @@ def train(hyp):
                         'run_id': logger.wandb.id if logger.wandb is not None else None,
                         'date': datetime.now().isoformat(),
                         'hyp': hyp}
-            torch.save(last_ckpt, 'data/db_last.pt')
+            torch.save(last_ckpt, 'data/db_last.ckpt')
             if save_best:
-                shutil.copy('data/db_last.pt', 'data/db_best.pt')
+                shutil.copy('data/db_last.ckpt', 'data/db_best.ckpt')
             if logger is not None:
                 logger.on_train_epoch_end(epoch, log_dict)
         scheduler.step()
@@ -221,6 +221,6 @@ if __name__ == '__main__':
     hyp['logger']['type'] =  'wandb'
 
     hyp['resume']['resume_training'] = True
-    hyp['resume']['ckpt'] = 'data/db_last_bk.pt'
-    # hyp['model']['db_weights'] = r'data/db_last.pt'
+    hyp['resume']['ckpt'] = 'data/db_last_bk.ckpt'
+    # hyp['model']['db_weights'] = r'data/db_last.ckpt'
     train(hyp)

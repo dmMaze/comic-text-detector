@@ -23,9 +23,9 @@ logger:
   type: wandb
 model:
   act: leaky
-  weights: data/yolov5sblk.pt
+  weights: data/yolov5sblk.ckpt
 resume:
-  ckpt: data/unet_last.pt
+  ckpt: data/unet_last.ckpt
   resume_training: true
 train:
   accumulation_steps: 4

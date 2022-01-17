@@ -30,7 +30,7 @@ train:
   accumulation_steps: 1
 
 model:
-  weights: 'data/yolov5sblk.pt'
+  weights: 'data/yolov5sblk.ckpt'
   act: 'leaky'
 
 logger:

@@ -166,11 +166,11 @@ def train(hyp):
                         'run_id': logger.wandb.id if logger is not None else None,
                         'date': datetime.now().isoformat(),
                         'hyp': hyp}
-            torch.save(last_ckpt, 'data/unet_last.pt')
+            torch.save(last_ckpt, 'data/unet_last.ckpt')
             if best_f1 < f1:
                 best_f1 = f1
                 LOGGER.info(f'saveing model at epoch {epoch}, best val f1: {best_f1}')
-                shutil.copy2('data/unet_last.pt', 'data/unet_best.pt')
+                shutil.copy2('data/unet_last.ckpt', 'data/unet_best.ckpt')
             LOGGER.info(f'epoch {epoch}/{epochs-1} loss: {m_loss} precision: {precision} recall: {recall}')
             if logger is not None:
                 log_dict = {}
@@ -185,7 +185,7 @@ def train(hyp):
         pbar.close()
 
 if __name__ == '__main__':
-    hyp_p = r'data\train_hyp.yaml'
+    hyp_p = r'data/train_hyp.yaml'
     with open(hyp_p, 'r', encoding='utf8') as f:
         hyp = yaml.safe_load(f.read())
 
@@ -209,5 +209,5 @@ if __name__ == '__main__':
     hyp['logger']['type'] = 'wandb'
 
     hyp['resume']['resume_training'] = True
-    hyp['resume']['ckpt'] = 'data/unet_last.pt'
+    hyp['resume']['ckpt'] = 'data/unet_last.ckpt'
     train(hyp)

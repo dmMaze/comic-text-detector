@@ -7,8 +7,8 @@ import torch
 import onnx
 from basemodel import TextDetBase
 import onnxsim
-from models.common import Conv
-from models.yolo import Detect
+from models.yolov5.common import Conv
+from models.yolov5.yolo import Detect
 import torch.nn as nn
 import time
 from dataset import letterbox
