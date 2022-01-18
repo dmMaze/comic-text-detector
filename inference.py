@@ -1,4 +1,6 @@
 
+import enum
+from operator import xor
 from basemodel import TextDetBase
 from utils.yolov5_utils import non_max_suppression
 import os.path as osp
@@ -15,6 +17,8 @@ import copy
 from utils.db_utils import SegDetectorRepresenter
 from utils.imgio_utils import imread, imwrite, find_all_imgs
 from utils.imgproc_utils import letterbox, resize_keepasp, union_area, xywh2xyxypoly, xyxy2yolo, get_yololabel_strings
+from shapely.geometry import Polygon
+
 
 def grid_sort(blk_list, im_w, im_h):
     if len(blk_list) == 0:
@@ -140,18 +144,22 @@ def visualize_annotations(canvas, blk_list):
     for ii, blk_dict in enumerate(blk_list):
         bx1, by1, bx2, by2 = blk_dict['xyxy']
         cv2.rectangle(canvas, (bx1, by1), (bx2, by2), (127, 255, 127), lw)
+        # lines = np.array(blk_dict['lines']).astype(np.uint32)
         lines = blk_dict['lines']
         for jj, line in enumerate(lines):
             cv2.putText(canvas, str(jj), line[0], cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,127,0), 1)
-            cv2.polylines(canvas, [line], True, (0,127,255), 2)
+            cv2.polylines(canvas, [np.array(line, dtype=np.int64)], True, (0,127,255), 2)
+            # try:
+            #     cv2.polylines(canvas, [line], True, (0,127,255), 2)
+            # except:
+            #     print(line)
         center = [int((bx1 + bx2)/2), int((by1 + by2)/2)]
         cv2.putText(canvas, str(blk_dict['angle']), center, cv2.FONT_HERSHEY_SIMPLEX, 1, (127,127,255), 2)
         # t_w, t_h = cv2.getTextSize(label, 0, fontScale=lw / 3, thickness=lw)[0]
         cv2.putText(canvas, str(ii), (bx1, by1 + lw + 2), 0, lw / 3, (255,127,127), max(lw-1, 1), cv2.LINE_AA)
 
-
-
-def sort_textlines(lines, im_w: int, im_h: int, eval_orientation: bool):
+def examine_textblk(blk: dict, im_w: int, im_h: int, eval_orientation: bool, sort: bool = False):
+    lines = blk['lines']
     if isinstance(lines, list):
         lines = np.array(lines, dtype=np.float64)
     middle_pnts = (lines[:, [1, 2, 3, 0]] + lines) / 2
@@ -165,21 +173,118 @@ def sort_textlines(lines, im_w: int, im_h: int, eval_orientation: bool):
     vertical = eval_orientation and norm_v > norm_h
     # calcuate distance between textlines and origin 
     if vertical:
-        orientation_vec, orientation_norm = v, norm_v
+        primary_vec, primary_norm = v, norm_v
         distance_vectors = center_pnts - np.array([[im_w, 0]], dtype=np.float64)   # vertical manga text is read from right to left, so origin is (imw, 0)
         font_size = int(round(norm_h / len(lines)))
     else:
-        orientation_vec, orientation_norm = h, norm_h
+        primary_vec, primary_norm = h, norm_h
         distance_vectors = center_pnts - np.array([[0, 0]], dtype=np.float64)
         font_size = int(round(norm_v / len(lines)))
-    rotation_angle = int(math.atan2(orientation_vec[1], orientation_vec[0]) / math.pi * 180)     # rotation angle of textlines
+    rotation_angle = int(math.atan2(primary_vec[1], primary_vec[0]) / math.pi * 180)     # rotation angle of textlines
     distance = np.linalg.norm(distance_vectors, axis=1)     # distance between textlinecenters and origin
-    rad_matrix = np.arccos(np.einsum('ij, j->i', distance_vectors, orientation_vec) / (distance * orientation_norm))
+    rad_matrix = np.arccos(np.einsum('ij, j->i', distance_vectors, primary_vec) / (distance * primary_norm))
     distance = np.abs(np.sin(rad_matrix) * distance)
-    idx = np.argsort(distance)
-    distance = distance[idx]
-    lines = lines[idx].astype(np.int32)
-    return lines, distance, rotation_angle, font_size, vertical
+    lines = lines.astype(np.int32)
+    if sort:
+        idx = np.argsort(distance)
+        distance = distance[idx]
+        lines = lines[idx]
+    blk['lines'] = lines.tolist()
+    blk['distance'] = distance
+    blk['angle'] = rotation_angle
+    blk['font_size'] = font_size
+    blk['vertical'] = vertical
+    blk['vec'] = primary_vec
+    blk['norm'] = primary_norm
+    # return lines, distance, rotation_angle, font_size, vertical, primary_vec
+
+def adjust_textbbox(blk_dict: dict, with_bbox=False):
+    lines = np.array(blk_dict['lines'])
+    if with_bbox:
+        blk_dict['xyxy'][0] = min(lines[..., 0].min(), blk_dict['xyxy'][0])
+        blk_dict['xyxy'][1] = min(lines[..., 1].min(), blk_dict['xyxy'][1])
+        blk_dict['xyxy'][2] = max(lines[..., 0].max(), blk_dict['xyxy'][2])
+        blk_dict['xyxy'][3] = max(lines[..., 1].max(), blk_dict['xyxy'][3])
+    else:
+        blk_dict['xyxy'][0] = lines[..., 0].min()
+        blk_dict['xyxy'][1] = lines[..., 1].min()
+        blk_dict['xyxy'][2] = lines[..., 0].max()
+        blk_dict['xyxy'][3] = lines[..., 1].max()
+
+def try_merge_textline(blk: dict, blk2: dict, fntsize_tol=1.3, distance_tol=2) -> bool:
+    if blk2['merged']:
+        return False
+    fntsize_div = blk['font_size'] / blk2['font_size']
+    num_l1, num_l2 = len(blk['lines']), len(blk2['lines'])
+    fntsz_avg = (blk['font_size'] * num_l1 + blk2['font_size'] * num_l2) / (num_l1 + num_l2)
+    vec_prod = blk['vec'] @ blk2['vec']
+    vec_sum = blk['vec'] + blk2['vec']
+    cos_vec = vec_prod / blk['norm'] / blk2['norm']
+    distance = blk2['distance'][-1] - blk['distance'][-1]
+    distance_p1 = np.linalg.norm(np.array(blk2['lines'][-1][0]) - np.array(blk['lines'][-1][0]))
+    l1, l2 = Polygon(blk['lines'][-1]), Polygon(blk2['lines'][-1])
+    if not l1.intersects(l2):
+        if fntsize_div > fntsize_tol or 1 / fntsize_div > fntsize_tol:
+            return False
+        if abs(cos_vec) < 0.866:   # cos30
+            return False
+        if distance > distance_tol * fntsz_avg or distance_p1 > fntsz_avg * 2:
+            return False
+    # merge
+    blk['lines'].append(blk2['lines'][0])
+    blk['vec'] = vec_sum
+    blk['angle'] = int(round(np.rad2deg(math.atan2(vec_sum[1], vec_sum[0]))))
+    blk['norm'] = np.linalg.norm(vec_sum)
+    blk['distance'] = np.append(blk['distance'], blk2['distance'][-1])
+    blk['font_size'] = fntsz_avg
+    blk2['merged'] = True
+    return True
+    
+def merge_textlines(blk_list: list) -> list:
+    if len(blk_list) < 1:
+        return blk_list
+    blk_list = sorted(blk_list, key=lambda blk_dict: blk_dict['distance'][0])
+    merged_list = list()
+    for ii, current_blk in enumerate(blk_list):
+        if current_blk['merged']:
+            continue
+        for jj, blk_dict in enumerate(blk_list[ii+1:]):
+            try_merge_textline(current_blk, blk_dict)
+        merged_list.append(current_blk)
+    for blk_dict in merged_list:
+        adjust_textbbox(blk_dict, with_bbox=False)
+    return merged_list
+
+def split_textblk(blk: dict):
+    font_size, distance, lines = blk['font_size'], blk['distance'], np.array(blk['lines'])
+    font_size = blk['font_size']
+    lines = np.array(blk['lines'])
+    distance_tol = font_size * 2
+    current_dict = copy.deepcopy(blk)
+    current_dict['lines'] = [lines[0]]
+    sub_blkdict_list = [current_dict]
+    textblock_splitted = False
+    for jj, line in enumerate(lines[1:]):
+        l1, l2 = Polygon(lines[jj]), Polygon(line)
+        split = False
+        if not l1.intersects(l2):
+            line_disance = distance[jj+1] - distance[jj]
+            if line_disance > distance_tol:
+                split = True
+            else:
+                if blk['vertical'] and abs(abs(blk['angle']) - 90) < 10:
+                    split = abs(lines[jj][0][1] - line[0][1]) > font_size
+        if split:
+            current_dict = copy.deepcopy(current_dict)
+            current_dict['lines'] = [line]
+            sub_blkdict_list.append(current_dict)
+        else:
+            current_dict['lines'].append(line)
+    if len(sub_blkdict_list) > 1:
+        textblock_splitted = True
+        for current_dict in sub_blkdict_list:
+            adjust_textbbox(current_dict, with_bbox=False)
+    return textblock_splitted, sub_blkdict_list
 
 class TextDetector:
     lang_list = ['eng', 'ja', 'unknown']
@@ -207,7 +312,7 @@ class TextDetector:
 
     def group_output(self, blks, lines, mask, expand_blk=True, sort_blklist=True, debug_canvas=None):
         im_h, im_w = mask.shape[:2]
-        blk_list = []
+        blk_list, scattered_lines = [], {'ver': [], 'hor': []}
         for bbox, cls, conf in zip(*blks):
             blk_dict = dict()
             blk_dict['xyxy'] = bbox
@@ -225,7 +330,6 @@ class TextDetector:
             bx1, bx2 = line[:, 0].min(), line[:, 0].max()
             by1, by2 = line[:, 1].min(), line[:, 1].max()
             bbox_score, bbox_idx = -1, -1
-
             line_area = (by2-by1) * (bx2-bx1)
             for ii, blk_dict in enumerate(blk_list):
                 score = union_area(blk_dict['xyxy'], [bx1, by1, bx2, by2]) / line_area
@@ -239,13 +343,16 @@ class TextDetector:
                 if mask_score > mask_score_thresh:
                     blk_dict = dict()
                     blk_dict['xyxy'] = [bx1, by1, bx2, by2]
-                    blk_dict['lines'] = list()
                     blk_dict['language'] = 'unknown'
                     blk_dict['lines'] = [line]
-                    blk_dict['vertical'] = False
-                    blk_list.append(blk_dict)
+                    blk_dict['merged'] = False
+                    examine_textblk(blk_dict, im_w, im_h, True, sort=False)
+                    if blk_dict['vertical']:
+                        scattered_lines['ver'].append(blk_dict)
+                    else:
+                        scattered_lines['hor'].append(blk_dict)
 
-        # step2: filter textblocks, sort textlines
+        # step2: filter textblocks, sort & split textlines
         final_blk_list = list()
         for ii, blk_dict in enumerate(blk_list):
             # filter textblocks 
@@ -259,39 +366,11 @@ class TextDetector:
                     blk_dict['lines'] = xywh2xyxypoly(xywh).reshape(-1, 4, 2).tolist()
             lines = np.array(blk_dict['lines']).astype(np.float64)
             eval_orientation = blk_dict['language'] != 'eng'
-            lines, distance, blk_dict['angle'], font_size, blk_dict['vertical'] = sort_textlines(lines, im_w, im_h, eval_orientation)
-            blk_dict['lines'], blk_dict['font_size'] = lines.tolist(), font_size
+            examine_textblk(blk_dict, im_w, im_h, eval_orientation, sort=True)
             # split manga text if there is a distance gap
             textblock_splitted = blk_dict['language'] == 'ja' and len(blk_dict['lines']) > 1
             if textblock_splitted:
-                distance_tol = font_size * 2
-                current_dict = copy.deepcopy(blk_dict)
-                current_dict['lines'] = [lines[0]]
-                sub_blkdict_list = [current_dict]
-                for jj, line in enumerate(lines[1:]):
-                    line_disance = distance[jj+1] - distance[jj]
-                    split = False
-                    if line_disance > distance_tol:
-                        split = True
-                    else:
-                        if blk_dict['vertical'] and abs(abs(blk_dict['angle']) - 90) < 10:
-                            if abs(lines[jj][0][1] - line[0][1]) > font_size:
-                                split = True
-                    if split:
-                        current_dict = copy.deepcopy(current_dict)
-                        current_dict['lines'] = [line]
-                        sub_blkdict_list.append(current_dict)
-                    else:
-                        current_dict['lines'].append(line)
-                if len(sub_blkdict_list) > 1:
-                    for current_dict in sub_blkdict_list:
-                        sub_lines = np.array(current_dict['lines'])
-                        current_dict['xyxy'][0] = sub_lines[..., 0].min()
-                        current_dict['xyxy'][1] = sub_lines[..., 1].min()
-                        current_dict['xyxy'][2] = sub_lines[..., 0].max()
-                        current_dict['xyxy'][3] = sub_lines[..., 1].max()
-                else:
-                    textblock_splitted = False
+                textblock_splitted, sub_blkdict_list = split_textblk(blk_dict)
             else:
                 sub_blkdict_list = [blk_dict]
             # modify textblock to fit its textlines
@@ -300,20 +379,18 @@ class TextDetector:
                     lines = blk_dict['lines']
                     if isinstance(lines, list):
                         lines = np.array(lines, dtype=np.int32)
-                    blk_dict['xyxy'][0] = min(lines[..., 0].min(), blk_dict['xyxy'][0])
-                    blk_dict['xyxy'][1] = min(lines[..., 1].min(), blk_dict['xyxy'][1])
-                    blk_dict['xyxy'][2] = max(lines[..., 0].max(), blk_dict['xyxy'][2])
-                    blk_dict['xyxy'][3] = max(lines[..., 1].max(), blk_dict['xyxy'][3])
+                    adjust_textbbox(blk_dict, with_bbox=True)
             final_blk_list += sub_blkdict_list
 
+        # step3: merge scattered lines, sort textblocks by "grid"
+        final_blk_list += merge_textlines(scattered_lines['hor'])
+        final_blk_list += merge_textlines(scattered_lines['ver'])
         if sort_blklist:
             final_blk_list = grid_sort(final_blk_list, im_w, im_h)
-        
         if debug_canvas is not None:
             visualize_annotations(debug_canvas, final_blk_list)
             cv2.imshow('canvas', debug_canvas)
             cv2.waitKey(0)
-
         return final_blk_list
 
     def __call__(self, img):
@@ -346,7 +423,7 @@ class TextDetector:
             lines[..., 1] *= resize_ratio[1]
             lines = lines.astype(np.int32)
 
-        return mask, self.group_output(blks, lines, mask, debug_canvas=None)
+        return mask, self.group_output(blks, lines, mask, debug_canvas=np.copy(img))
 
         # lines_map = postprocess_mask(lines_map[:, 0].squeeze_())
         # return blks, mask, lines
@@ -357,10 +434,10 @@ if __name__ == '__main__':
     model_path = 'data/textdetector.pt'
     # textdet = TextDetector(model_path, device=device, input_size=1024, act=True)
 
-    # img_dir = r'D:\neonbub\mainproj\wan\data\testpacks\eng'
-    img_dir = r'E:\learning\wan-master\data\testpacks\eng'
-    save_dir = r'data\dataset\result'
-    # model2annotations(model_path, img_dir, save_dir)
+    img_dir = r'D:\neonbub\mainproj\wan\data\testpacks\jpn'
+    # img_dir = r'E:\learning\wan-master\data\testpacks\eng'
+    save_dir = r'data\backup'
+    model2annotations(model_path, img_dir, save_dir)
     cuda = True
     providers = ['CUDAExecutionProvider', 'CPUExecutionProvider'] if cuda else ['CPUExecutionProvider']
     session = onnxruntime.InferenceSession(r'data\textdetector.pt.onnx', providers=providers)
