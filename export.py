@@ -43,7 +43,7 @@ def export_onnx(model, im, file, opset, train=False, simplify=True, dynamic=Fals
                         training=torch.onnx.TrainingMode.TRAINING if train else torch.onnx.TrainingMode.EVAL,
                         do_constant_folding=not train,
                         input_names=['images'],
-                        output_names=['output', 'dummy1', 'dummy2', 'dummy3', 'seg', 'det'],
+                        output_names=['blk', 'dummy1', 'dummy2', 'dummy3', 'seg', 'det'],
                         dynamic_axes={'images': {0: 'batch', 2: 'height', 3: 'width'},  # shape(1,3,640,640)
                                     'output': {0: 'batch', 1: 'anchors'}  # shape(1,25200,85)
                                     } if dynamic else None)
@@ -71,13 +71,13 @@ if __name__ == '__main__':
 
     # export_onnx(model, im, model_path, 11)
 
-    img_path = r'data/dataset/train/manga-2217.jpg'
+    img_path = r'E:\learning\wan-master\data\testpacks\eng\000054.jpg'
     img = cv2.imread(img_path)
     img, ratio, (dw, dh) = letterbox(img, new_shape=(1024, 1024), auto=False, stride=64)
     # img = img.transpose((2, 0, 1))[::-1]  # HWC to CHW, BGR to RGB
     # img = np.ascontiguousarray([img]) / 255.
     
-    model_path = r'data/textdetector.unfused.pt.onnx'
+    model_path = r'data/textdetector.pt.onnx'
     net = cv2.dnn.readNetFromONNX(model_path)
     blob = cv2.dnn.blobFromImage(img, scalefactor=1 / 255.0, size=(input_size, input_size))
     net.setInput(blob)

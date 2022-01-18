@@ -1,5 +1,4 @@
 
-from typing import final
 from basemodel import TextDetBase
 from utils.yolov5_utils import non_max_suppression
 import os.path as osp
@@ -15,11 +14,11 @@ import math
 import copy
 from utils.db_utils import SegDetectorRepresenter
 from utils.imgio_utils import imread, imwrite, find_all_imgs
-from utils.imgproc_utils import letterbox, resize_keepasp, union_area, xywh2xyxypoly
-
-
+from utils.imgproc_utils import letterbox, resize_keepasp, union_area, xywh2xyxypoly, xyxy2yolo, get_yololabel_strings
 
 def grid_sort(blk_list, im_w, im_h):
+    if len(blk_list) == 0:
+        return blk_list
     num_ja = 0
     xyxy = []
     for blk_dict in blk_list:
@@ -66,15 +65,28 @@ def model2annotations(model_path, img_dir_list, save_dir):
     for img_path in tqdm(imglist):
         imgname = osp.basename(img_path)
         img = cv2.imread(img_path)
+        im_h, im_w = img.shape[:2]
         imname = imgname.replace(Path(imgname).suffix, '')
         maskname = 'mask-'+imname+'.png'
         poly_save_path = osp.join(save_dir, 'line-' + imname + '.txt')
-        blks, mask, polys = model(img)
-        # cv2.imshow('mask', mask)
-        # cv2.imshow('img', img)
-        # cv2.waitKey(0)
-        blines, cls, _ = blks
+        mask, blk_list = model(img)
+        polys = []
+        blk_xyxy = []
+        for blk_dict in blk_list:
+            polys += blk_dict['lines']
+            blk_xyxy.append(blk_dict['xyxy'])
+        blk_xyxy = xyxy2yolo(blk_xyxy, im_w, im_h)
+        if blk_xyxy is not None:
+            cls_list = [1] * len(blk_xyxy)
+            yolo_label = get_yololabel_strings(cls_list, blk_xyxy)
+        else:
+            yolo_label = ''
+        with open(osp.join(save_dir, imname+'.txt'), 'w', encoding='utf8') as f:
+            f.write(yolo_label)
+
         if len(polys) != 0:
+            if isinstance(polys, list):
+                polys = np.array(polys)
             polys = polys.reshape(-1, 8)
             np.savetxt(poly_save_path, polys, fmt='%d')
             for p in polys.reshape(len(polys), -1, 2):
@@ -82,15 +94,16 @@ def model2annotations(model_path, img_dir_list, save_dir):
         cv2.imwrite(osp.join(save_dir, imgname), img)
         cv2.imwrite(osp.join(save_dir, maskname), mask)
 
-def preprocess_img(img, input_size=(1024, 1024), device='cpu', bgr2rgb=True, half=False):
+def preprocess_img(img, input_size=(1024, 1024), device='cpu', bgr2rgb=True, half=False, to_tensor=True):
     if bgr2rgb:
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     img_in, ratio, (dw, dh) = letterbox(img, new_shape=input_size, auto=False, stride=64)
     img_in = img_in.transpose((2, 0, 1))[::-1]  # HWC to CHW, BGR to RGB
     img_in = np.array([np.ascontiguousarray(img_in)]).astype(np.float32) / 255
-    img_in = torch.from_numpy(img_in).to(device)
-    if half:
-        img_in = img_in.half()
+    if to_tensor:
+        img_in = torch.from_numpy(img_in).to(device)
+        if half:
+            img_in = img_in.half()
     return img_in, ratio, int(dw), int(dh)
 
 def postprocess_mask(img: torch.Tensor, thresh=None):
@@ -247,7 +260,7 @@ class TextDetector:
             lines = np.array(blk_dict['lines']).astype(np.float64)
             eval_orientation = blk_dict['language'] != 'eng'
             lines, distance, blk_dict['angle'], font_size, blk_dict['vertical'] = sort_textlines(lines, im_w, im_h, eval_orientation)
-            blk_dict['lines'], blk_dict['font_size'] = lines, font_size
+            blk_dict['lines'], blk_dict['font_size'] = lines.tolist(), font_size
             # split manga text if there is a distance gap
             textblock_splitted = blk_dict['language'] == 'ja' and len(blk_dict['lines']) > 1
             if textblock_splitted:
@@ -333,10 +346,10 @@ class TextDetector:
             lines[..., 1] *= resize_ratio[1]
             lines = lines.astype(np.int32)
 
-        self.group_output(blks, lines, mask, debug_canvas=np.copy(img))
+        return mask, self.group_output(blks, lines, mask, debug_canvas=None)
 
         # lines_map = postprocess_mask(lines_map[:, 0].squeeze_())
-        return blks, mask, lines
+        # return blks, mask, lines
 
 
 if __name__ == '__main__':
@@ -344,10 +357,14 @@ if __name__ == '__main__':
     model_path = 'data/textdetector.pt'
     # textdet = TextDetector(model_path, device=device, input_size=1024, act=True)
 
-    img_dir = r'D:\neonbub\mainproj\wan\data\testpacks\eng'
+    # img_dir = r'D:\neonbub\mainproj\wan\data\testpacks\eng'
+    img_dir = r'E:\learning\wan-master\data\testpacks\eng'
     save_dir = r'data\dataset\result'
-    model2annotations(model_path, img_dir, save_dir)
+    # model2annotations(model_path, img_dir, save_dir)
     cuda = True
     providers = ['CUDAExecutionProvider', 'CPUExecutionProvider'] if cuda else ['CPUExecutionProvider']
     session = onnxruntime.InferenceSession(r'data\textdetector.pt.onnx', providers=providers)
     
+    # img = cv2.imread(r'E:\learning\wan-master\data\testpacks\eng\000054.jpg')
+    # img_in, ratio, dw, dh = preprocess_img(img, to_tensor=False)
+    # cv2.dnn.readOnnx()
