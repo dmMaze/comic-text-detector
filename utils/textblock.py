@@ -202,13 +202,12 @@ def split_textblk(blk: TextBlock):
             current_blk.adjust_bbox(with_bbox=False)
     return textblock_splitted, sub_blk_list
 
-def group_output(blks, lines, im_w, im_h, mask=None, sort_blklist=True):
+def group_output(blks, lines, im_w, im_h, mask=None, sort_blklist=True) -> List[TextBlock]:
     blk_list, scattered_lines = [], {'ver': [], 'hor': []}
     for bbox, cls, conf in zip(*blks):
         blk_list.append(TextBlock(bbox, language=LANG_LIST[cls]))
 
     # step1: filter & assign lines to textblocks
-    # dbnet generate some lines inside others, maybe need to filter out those too
     bbox_score_thresh = 0.4
     mask_score_thresh = 0.1
     for ii, line in enumerate(lines):
