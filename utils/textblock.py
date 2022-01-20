@@ -1,3 +1,4 @@
+from mailbox import linesep
 from typing import List
 import numpy as np
 from shapely.geometry import Polygon
@@ -9,21 +10,37 @@ LANG_LIST = ['eng', 'ja', 'unknown']
 LANGCLS2IDX = {'eng': 0, 'ja': 1, 'unknown': 2}
 
 class TextBlock(object):
-    def __init__(self, xyxy: List, lines: List = None, language: str = 'unknown', font_size: float = -1) -> None:
+    def __init__(self, xyxy: List, 
+                       lines: List = None, 
+                       language: str = 'unknown',
+                       vertical: bool = False, 
+                       font_size: float = -1,
+                       distance: List = None,
+                       angle: int = -1,
+                       vec: List = None,
+                       norm: float = -1,
+                       merged: bool = False,
+                       weight: float = -1) -> None:
         self.xyxy = xyxy                    # boundingbox of textblock
         if lines is not None:
             self.lines = lines              # polygons of textlines
         else:
             self.lines = []
-        self.vertical = False               # orientation of textlines
+        self.vertical = vertical            # orientation of textlines
         self.language = language
         self.font_size = font_size
-        self.distance = None                # distance between textlines and "origin"
-        self.angle = None                   # rotation angle of textlines
-        self.vec = None                     # primary vector of textblock
-        self.norm = None                    # primary norm of textblock
-        self.merged = False
-        self.weight = None
+        if distance is not None:            # distance between textlines and "origin"
+            self.distance = np.array(distance, np.float64)
+        else:
+            self.distance = None           
+        self.angle = angle                  # rotation angle of textlines
+        if vec is not None:                 # primary vector of textblock
+            self.vec = np.array(vec, np.float64)
+        else:
+            vec = None                     
+        self.norm = norm                    # primary norm of textblock
+        self.merged = merged
+        self.weight = weight
 
     def adjust_bbox(self, with_bbox=False):
         lines = np.array(self.lines)
@@ -59,6 +76,29 @@ class TextBlock(object):
 
     def __getitem__(self, idx):
         return self.lines[idx]
+
+    def to_dict(self, extra_info=False):
+        blk_dict = copy.deepcopy(vars(self))
+        if not isinstance(self.xyxy, List):
+            blk_dict['xyxy'] = blk_dict['xyxy'].tolist()
+        blk_dict['lines'] = []
+        for line in self.lines:
+            if not isinstance(line, List):
+                blk_dict['lines'].append(line.tolist())
+            else:
+                blk_dict['lines'].append(line)
+        blk_dict['vertical'] = bool(self.vertical)
+        blk_dict['merged'] = bool(self.merged)
+        if not extra_info:
+            blk_dict.pop('distance')
+            blk_dict.pop('weight')
+            blk_dict.pop('vec')
+            blk_dict.pop('norm')
+        else:
+            blk_dict['distance'] = self.distance.tolist()
+            blk_dict['vec'] = self.vec.tolist()
+
+        return blk_dict
 
 def sort_textblk_list(blk_list: List[TextBlock], im_w: int, im_h: int) -> List[TextBlock]:
     if len(blk_list) == 0:
@@ -215,11 +255,11 @@ def group_output(blks, lines, im_w, im_h, mask=None, sort_blklist=True) -> List[
         by1, by2 = line[:, 1].min(), line[:, 1].max()
         bbox_score, bbox_idx = -1, -1
         line_area = (by2-by1) * (bx2-bx1)
-        for ii, blk in enumerate(blk_list):
+        for jj, blk in enumerate(blk_list):
             score = union_area(blk.xyxy, [bx1, by1, bx2, by2]) / line_area
             if bbox_score < score:
                 bbox_score = score
-                bbox_idx = ii
+                bbox_idx = jj
         if bbox_score > bbox_score_thresh:
             blk_list[bbox_idx].lines.append(line)
         else:   # if no textblock was assigned, check whether there is "enough" textmask

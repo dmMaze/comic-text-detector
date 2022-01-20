@@ -1,4 +1,5 @@
 
+from cgitb import grey
 from typing import List
 from basemodel import TextDetBase
 from utils.yolov5_utils import non_max_suppression
@@ -18,6 +19,7 @@ from utils.imgproc_utils import letterbox, xyxy2yolo, get_yololabel_strings
 from utils.textblock import TextBlock, group_output
 from shapely.geometry import Polygon
 import random
+import json
 
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
@@ -67,9 +69,9 @@ def extract_textballoon(img, pred_textmsk=None, global_mask=None):
                 x1, y1, x2, y2 = x, y, x+w, y+h
                 label_local = labels[y1: y2, x1: x2]
                 label_cordinates = np.where(label_local==label_index)
-                tmp_text_map = np.zeros((h, w), np.uint8)
-                tmp_text_map[label_cordinates] = 255
-                andmap = cv2.bitwise_and(tmp_text_map, pred_textmsk[y1: y2, x1: x2])
+                tmp_merged = np.zeros((h, w), np.uint8)
+                tmp_merged[label_cordinates] = 255
+                andmap = cv2.bitwise_and(tmp_merged, pred_textmsk[y1: y2, x1: x2])
                 text_score = andmap.sum() / area
                 if text_score > text_score_thresh:
                     text_labels.append(label_index)
@@ -136,9 +138,7 @@ def refine_textmask(img, pred_mask, channel_wise=True, find_leaveouts=True, glob
             hyp_textmsk = cv2.bitwise_and(hyp_textmsk, global_mask)
     return hyp_textmsk, bubble_msk
 
-
-def draw_connected_labels(num_labels, labels, stats, centroids):
-
+def draw_connected_labels(num_labels, labels, stats, centroids, names="draw_connected_labels"):
     labdraw = np.zeros((labels.shape[0], labels.shape[1], 3), dtype=np.uint8)
     max_ind = np.argmax(stats[:, 4])
     for ind, lab in enumerate((range(num_labels))):
@@ -160,11 +160,8 @@ def draw_connected_labels(num_labels, labels, stats, centroids):
                 labdraw = cv2.drawContours(labdraw, [box], 0, randcolor, 2)
                 labdraw = cv2.circle(labdraw, (int(centroids[ind][0]),int(centroids[ind][1])), radius=5, color=(random.randint(0,255), random.randint(0,255), random.randint(0,255)), thickness=-1)                
 
-    cv2.imshow("draw_connected_labels", labdraw)
+    cv2.imshow(names, labdraw)
     return labdraw
-
-
-
 
 def model2annotations(model_path, img_dir_list, save_dir):
     if isinstance(img_dir_list, str):
@@ -185,9 +182,11 @@ def model2annotations(model_path, img_dir_list, save_dir):
         mask, blk_list = model(img)
         polys = []
         blk_xyxy = []
+        blk_dict_list = []
         for blk in blk_list:
             polys += blk.lines
             blk_xyxy.append(blk.xyxy)
+            blk_dict_list.append(blk.to_dict(extra_info=True))
         blk_xyxy = xyxy2yolo(blk_xyxy, im_w, im_h)
         if blk_xyxy is not None:
             cls_list = [1] * len(blk_xyxy)
@@ -197,20 +196,9 @@ def model2annotations(model_path, img_dir_list, save_dir):
         with open(osp.join(save_dir, imname+'.txt'), 'w', encoding='utf8') as f:
             f.write(yolo_label)
 
-        
         # num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(mask)
         # _, mask = cv2.threshold(mask, 50, 255, cv2.THRESH_BINARY)
         # draw_connected_labels(num_labels, labels, stats, centroids)
-        for blk in blk_list:
-            bx1, by1, bx2, by2 = expand_textwindow(img.shape, blk.xyxy)
-            # bx1, by1, bx2, by2 = blk.xyxy
-            
-            # hyp_textmsk, bubble_msk = refine_textmask(img[by1: by2, bx1: bx2], mask[by1: by2, bx1: bx2], find_leaveouts=True)
-            im = np.ascontiguousarray(img[by1: by2, bx1: bx2])
-            msk = np.ascontiguousarray(mask[by1: by2, bx1: bx2])
-            # crf_mask = refine_mask(im, msk)
-            # cv2.imshow('hyptext', hyp_textmsk)
-            # cv2.imshow('bubble', bubble_msk)
         visualize_annotations(img, blk_list)
         cv2.imshow('rst', img)
         cv2.imshow('mask', mask)
@@ -221,8 +209,8 @@ def model2annotations(model_path, img_dir_list, save_dir):
                 polys = np.array(polys)
             polys = polys.reshape(-1, 8)
             np.savetxt(poly_save_path, polys, fmt='%d')
-            # for p in polys.reshape(len(polys), -1, 2):
-            #     cv2.polylines(img,[p],True,(255, 0, 0), thickness=2)
+        with open(osp.join(save_dir, imname+'.json'), 'w', encoding='utf8') as f:
+            f.write(json.dumps(blk_dict_list, ensure_ascii=False))
         cv2.imwrite(osp.join(save_dir, imgname), img)
         cv2.imwrite(osp.join(save_dir, maskname), mask)
 
@@ -280,8 +268,6 @@ def visualize_annotations(canvas, blk_list):
         cv2.putText(canvas, str(blk.angle), center, cv2.FONT_HERSHEY_SIMPLEX, 1, (127,127,255), 2)
         cv2.putText(canvas, str(ii), (bx1, by1 + lw + 2), 0, lw / 3, (255,127,127), max(lw-1, 1), cv2.LINE_AA)
 
-
-
 def hex2bgr(hex):
     gmask = 254 << 8
     rmask = 254
@@ -290,51 +276,96 @@ def hex2bgr(hex):
     r = hex & rmask
     return np.stack([b, g, r]).transpose()
 
-def get_topk_color(color_list, bins, k=3, color_var=20, bin_tol=0.001):
+def get_topk_color(color_list, bins, k=3, color_var=10, bin_tol=0.001):
     top_colors = [color_list[0]]
     bin_tol = np.sum(bins) * bin_tol
     if len(color_list) > 1:
         for color, bin in zip(color_list[1:], bins[1:]):
             if np.abs(np.array(top_colors) - color).min() > color_var:
                 top_colors.append(color)
-            if len(top_colors) > k or bin < bin_tol:
+            if len(top_colors) >= k or bin < bin_tol:
                 break
     return top_colors
 
-def refine_mask(img: np.asanyarray, mask: np.asanyarray, blk_list: List[TextBlock]) -> np.asanyarray:
+def minxor_thresh(threshed, mask, dilate=False):
+    neg_threshed = 255 - threshed
+    e_size = 1
+    if dilate:
+        element = cv2.getStructuringElement(cv2.MORPH_RECT, (2 * e_size + 1, 2 * e_size + 1),(e_size, e_size))
+        neg_threshed = cv2.dilate(neg_threshed, element, iterations=1)
+        threshed = cv2.dilate(threshed, element, iterations=1)
+    neg_xor_sum = cv2.bitwise_xor(neg_threshed, mask).sum()
+    xor_sum = cv2.bitwise_xor(threshed, mask).sum()
+    if neg_xor_sum < xor_sum:
+        return neg_threshed, neg_xor_sum
+    else:
+        return threshed, xor_sum
+
+def merge_mask_list(mask_list, pred_mask, line_mask=None, pred_thresh=30):
+    mask_list.sort(key=lambda x: x[1])
+    if pred_thresh > 0:
+        # pred_mask = ((pred_mask > pred_thresh) * 255).astype(np.uint8)
+        e_size = 1
+        element = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * e_size + 1, 2 * e_size + 1),(e_size, e_size))
+        # _, pred_mask = cv2.threshold(pred_mask, 70, 255, cv2.THRESH_OTSU+cv2.THRESH_BINARY)        
+        pred_mask = cv2.erode(pred_mask, element, iterations=1)
+        _, pred_mask = cv2.threshold(pred_mask, 70, 255, cv2.THRESH_BINARY)
+    connectivity = 4
+    bbox_area_thresh = pred_mask.shape[0] * pred_mask.shape[1] / 20000
+    mask_merged = np.zeros_like(pred_mask)
+    for ii, (candidate_mask, xor_sum) in enumerate(mask_list):
+        num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(candidate_mask, connectivity, cv2.CV_16U)
+        draw_connected_labels(num_labels, labels, stats, centroids, names='conn-'+str(ii))
+        for label_index, stat, centroid in zip(range(num_labels), stats, centroids):
+            if label_index != 0: # skip background label
+                x, y, w, h, area = stat
+                if w * h < bbox_area_thresh:
+                    continue
+                area *= 255
+                x1, y1, x2, y2 = x, y, x+w, y+h
+                label_local = labels[y1: y2, x1: x2]
+                label_cordinates = np.where(label_local==label_index)
+                tmp_merged = np.zeros_like(label_local, np.uint8)
+                tmp_merged[label_cordinates] = 255
+                tmp_merged = cv2.bitwise_or(mask_merged[y1: y2, x1: x2], tmp_merged)
+                xor_merged = cv2.bitwise_xor(tmp_merged, pred_mask[y1: y2, x1: x2]).sum()
+                xor_origin = cv2.bitwise_xor(mask_merged[y1: y2, x1: x2], pred_mask[y1: y2, x1: x2]).sum()
+                if xor_merged < xor_origin:
+                    mask_merged[y1: y2, x1: x2] = tmp_merged
+                # text_score = andmap.sum() / area
+                # if text_score > text_score_thresh:
+                #     mask_merged[y1: y2, x1: x2] = tmp_merged
+        cv2.imshow('threshed-'+str(ii), mask_merged)
+    cv2.imshow('pred-mask', pred_mask)
+
+def refine_mask(img: np.asanyarray, pred_mask: np.asanyarray, blk_list: List[TextBlock]) -> np.asanyarray:
     for blk in blk_list:
         bx1, by1, bx2, by2 = expand_textwindow(img.shape, blk.xyxy, expand_r=16)
-        # bx1, by1, bx2, by2 = blk.xyxy
-        
-        hyp_textmsk, bubble_msk = refine_textmask(img[by1: by2, bx1: bx2], mask[by1: by2, bx1: bx2], find_leaveouts=True)
         im = np.ascontiguousarray(img[by1: by2, bx1: bx2])
-        
         im_grey = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)
-        msk = np.ascontiguousarray(mask[by1: by2, bx1: bx2])
-        # candidate_px = im[np.where(msk > 200)].astype(np.uint32)
-        # candidate_px = (candidate_px[:, 0] << 16) + (candidate_px[:, 1] << 8) + candidate_px[:, 2]
-        candidate_grey_px = im_grey[np.where(msk > 127)]
+        msk = np.ascontiguousarray(pred_mask[by1: by2, bx1: bx2])
+        candidate_grey_px = im_grey[np.where(cv2.erode(msk, np.ones((3,3), np.uint8), iterations=1) > 127)]
         bin, his = np.histogram(candidate_grey_px, bins=255)
         idx = np.argsort(bin * -1)
         his = his[idx]
         bin = bin[idx]
-        # hex = hex.astype(np.uint32)
-        # idx = np.argsort(bin * -1)
-        # hex = hex[idx]
-        # bgr = hex2bgr(hex)
         topk_color = get_topk_color(his, bin)
-        color_range = 30
+        color_range = 20
+        mask_list = []
         for ii, color in enumerate(topk_color):
-            c = np.ones((100, 100, 3)) * color
-            c = c.astype(np.uint8)
-            threshed = cv2.inRange(im_grey, int(color-color_range), int(color+color_range))
-            # cv2.imshow(str(ii), c)
-            cv2.imshow('threshed-'+str(ii), threshed)
-
+            c_top = min(color+color_range, 255)
+            c_bottom = c_top - 2 * color_range
+            threshed = cv2.inRange(im_grey, c_bottom, c_top)
+            threshed, xor_sum = minxor_thresh(threshed, msk)
+            mask_list.append([threshed, xor_sum])
+        merge_mask_list(mask_list, msk)
+        # comp_list.sort(key=lambda x: x[1])
+        # for ii, (threshed, xor_sum) in enumerate(comp_list):
+        #     cv2.imshow('threshed-'+str(ii), threshed)
         cv2.imshow('im', im)
         cv2.imshow('msk', msk)
         cv2.waitKey(0)
-    return mask
+    return msk
 
 class TextDetector:
     lang_list = ['eng', 'ja', 'unknown']
@@ -388,23 +419,47 @@ class TextDetector:
             lines[..., 0] *= resize_ratio[0]
             lines[..., 1] *= resize_ratio[1]
             lines = lines.astype(np.int32)
+
         blk_list = group_output(blks, lines, im_w, im_h, mask)
         mask = refine_mask(img, mask, blk_list)
         return mask, blk_list
 
+
+def traverse_by_dict(img_dir_list, dict_dir):
+    if isinstance(img_dir_list, str):
+        img_dir_list = [img_dir_list]
+    imglist = []
+    for img_dir in img_dir_list:
+        imglist += find_all_imgs(img_dir, abs_path=True)
+    for img_path in tqdm(imglist):
+        imgname = osp.basename(img_path)
+        imname = imgname.replace(Path(imgname).suffix, '')
+        mask_path = osp.join(dict_dir, 'mask-'+imname+'.png')
+        with open(osp.join(dict_dir, imname+'.json'), 'r', encoding='utf8') as f:
+            blk_dict_list = json.loads(f.read())
+            blk_list = [TextBlock(**blk_dict) for blk_dict in blk_dict_list]
+        img = cv2.imread(img_path)
+        mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
+        refine_mask(img, mask, blk_list)
+
+        visualize_annotations(img, blk_list)
+        cv2.imshow('im', img)
+        cv2.imshow('mask', mask)
+        cv2.waitKey(0)
 
 if __name__ == '__main__':
     device = 'cpu'
     model_path = 'data/textdetector.pt'
     # textdet = TextDetector(model_path, device=device, input_size=1024, act=True)
 
-    img_dir = r'D:\neonbub\mainproj\wan\data\testpacks\tmp'
+    img_dir = r'E:\learning\testpacks\tmp'
     # img_dir = r'E:\learning\wan-master\data\testpacks\eng'
     save_dir = r'data\backup'
-    model2annotations(model_path, img_dir, save_dir)
-    cuda = True
-    providers = ['CUDAExecutionProvider', 'CPUExecutionProvider'] if cuda else ['CPUExecutionProvider']
-    session = onnxruntime.InferenceSession(r'data\textdetector.pt.onnx', providers=providers)
+    # model2annotations(model_path, img_dir, save_dir)
+    traverse_by_dict(img_dir, save_dir)
+    # cuda = True
+    # providers = ['CUDAExecutionProvider', 'CPUExecutionProvider'] if cuda else ['CPUExecutionProvider']
+    # session = onnxruntime.InferenceSession(r'data\textdetector.pt.onnx', providers=providers)
     
     # img = cv2.imread(r'E:\learning\wan-master\data\testpacks\eng\000054.jpg')
     # img_in, ratio, dw, dh = preprocess_img(img, to_tensor=False)
