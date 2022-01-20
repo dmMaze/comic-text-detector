@@ -1,6 +1,3 @@
-
-from cgitb import grey
-from typing import List
 from basemodel import TextDetBase
 from utils.yolov5_utils import non_max_suppression
 import os.path as osp
@@ -11,157 +8,12 @@ import torch
 from pathlib import Path
 import torch
 import onnxruntime
-import math
-import copy
 from utils.db_utils import SegDetectorRepresenter
 from utils.imgio_utils import imread, imwrite, find_all_imgs
 from utils.imgproc_utils import letterbox, xyxy2yolo, get_yololabel_strings
 from utils.textblock import TextBlock, group_output
-from shapely.geometry import Polygon
-import random
 import json
-
-WHITE = (255, 255, 255)
-BLACK = (0, 0, 0)
-LANG_ENG = 0
-LANG_JPN = 1
-
-def expand_textwindow(img_size, xyxy, expand_r=8, shrink=False):
-    im_h, im_w = img_size[:2]
-    x1, y1 , x2, y2 = xyxy
-    w = x2 - x1
-    h = y2 - y1
-    paddings = int(round((max(h, w) * 0.25 + min(h, w) * 0.75) / expand_r))
-    if shrink:
-        paddings *= -1
-    x1, y1 = max(0, x1 - paddings), max(0, y1 - paddings)
-    x2, y2 = min(im_w-1, x2+paddings), min(im_h-1, y2+paddings)
-    return [x1, y1, x2, y2]
-
-def extract_textballoon(img, pred_textmsk=None, global_mask=None):
-    if len(img.shape) > 2 and img.shape[2] == 3:
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    im_h, im_w = img.shape[0], img.shape[1]
-    hyp_textmsk = np.zeros((im_h, im_w), np.uint8)
-
-    thresh_val, threshed = cv2.threshold(img, 1, 255, cv2.THRESH_OTSU+cv2.THRESH_BINARY)
-    
-    xormap_sum = cv2.bitwise_xor(threshed, pred_textmsk).sum()
-    neg_threshed = 255 - threshed
-    neg_xormap_sum = cv2.bitwise_xor(neg_threshed, pred_textmsk).sum()
-    neg_thresh = neg_xormap_sum < xormap_sum
-    if neg_thresh:
-        threshed = neg_threshed
-    thresh_info = {'thresh_val': thresh_val,'neg_thresh': neg_thresh}
-    connectivity = 8
-    num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(threshed, connectivity, cv2.CV_16U)
-    label_unchanged = np.copy(labels)
-    if global_mask is not None:
-        labels[np.where(global_mask==0)] = 0
-    text_labels = []
-    if pred_textmsk is not None:
-        text_score_thresh = 0.5
-        textbbox_map = np.zeros_like(pred_textmsk)
-        for label_index, stat, centroid in zip(range(num_labels), stats, centroids):
-            if label_index != 0: # skip background label
-                x, y, w, h, area = stat
-                area *= 255
-                x1, y1, x2, y2 = x, y, x+w, y+h
-                label_local = labels[y1: y2, x1: x2]
-                label_cordinates = np.where(label_local==label_index)
-                tmp_merged = np.zeros((h, w), np.uint8)
-                tmp_merged[label_cordinates] = 255
-                andmap = cv2.bitwise_and(tmp_merged, pred_textmsk[y1: y2, x1: x2])
-                text_score = andmap.sum() / area
-                if text_score > text_score_thresh:
-                    text_labels.append(label_index)
-                    hyp_textmsk[y1: y2, x1: x2][label_cordinates] = 255
-    labels = label_unchanged
-    bubble_msk = np.zeros((img.shape[0], img.shape[1]), np.uint8)
-    bubble_msk[np.where(labels==0)] = 255
-    # if lang == LANG_JPN:
-    bubble_msk = cv2.erode(bubble_msk, (3, 3), iterations=1)
-    line_thickness = 2
-    cv2.rectangle(bubble_msk, (0, 0), (im_w, im_h), BLACK, line_thickness, cv2.LINE_8)
-    contours, hiers = cv2.findContours(bubble_msk, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_NONE)
-
-    brect_area_thresh = im_h * im_w * 0.4
-    min_brect_area = np.inf
-    ballon_index = -1
-    maxium_pixsum = -1
-    for ii, contour in enumerate(contours):
-        brect = cv2.boundingRect(contours[ii])
-        brect_area = brect[2] * brect[3]
-        if brect_area > brect_area_thresh and brect_area < min_brect_area:
-            tmp_ballonmsk = np.zeros_like(bubble_msk)
-            tmp_ballonmsk = cv2.drawContours(tmp_ballonmsk, contours, ii, WHITE, cv2.FILLED)
-            andmap_sum = cv2.bitwise_and(tmp_ballonmsk, hyp_textmsk).sum()
-            if andmap_sum > maxium_pixsum:
-                maxium_pixsum = andmap_sum
-                min_brect_area = brect_area
-                ballon_index = ii
-    if ballon_index != -1:
-        bubble_msk = np.zeros_like(bubble_msk)
-        bubble_msk = cv2.drawContours(bubble_msk, contours, ballon_index, WHITE, cv2.FILLED)
-    hyp_textmsk = cv2.bitwise_and(hyp_textmsk, bubble_msk)
-    return hyp_textmsk, bubble_msk, thresh_info, (num_labels, label_unchanged, stats, centroids, text_labels)
-
-def extract_textballoon_channelwise(img, pred_textmsk, test_grey=True, global_mask=None):
-    c_list = [img[:, :, i] for i in range(3)]
-    if test_grey:
-        c_list.append(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY))
-    best_xorpix_sum = np.inf
-    best_cindex = best_hyptextmsk = best_bubblemsk = best_thresh_info = best_component_stats = None
-    for c_index, channel in enumerate(c_list):
-        hyp_textmsk, bubble_msk, thresh_info, component_stats = extract_textballoon(channel, pred_textmsk, global_mask=global_mask)
-        pixor_sum = cv2.bitwise_xor(hyp_textmsk, pred_textmsk).sum()
-        if pixor_sum < best_xorpix_sum:
-            best_xorpix_sum = pixor_sum
-            best_cindex = c_index
-            best_hyptextmsk, best_bubblemsk, best_thresh_info, best_component_stats = hyp_textmsk, bubble_msk, thresh_info, component_stats
-    return best_hyptextmsk, best_bubblemsk, best_component_stats
-
-def refine_textmask(img, pred_mask, channel_wise=True, find_leaveouts=True, global_mask=None):
-    hyp_textmsk, bubble_msk, component_stats = extract_textballoon_channelwise(img, pred_mask, global_mask=global_mask)
-    num_labels, labels, stats, centroids, text_labels = component_stats
-    stats = np.array(stats)
-    text_stats = stats[text_labels]
-    if find_leaveouts and len(text_stats) > 0:
-        median_h = np.median(text_stats[:, 3])
-        for label, label_h in zip(range(num_labels), stats[:, 3]):
-            if label == 0 or label in text_labels:
-                continue
-            if label_h > 0.5 * median_h and label_h < 1.5 * median_h:
-                hyp_textmsk[np.where(labels==label)] = 255
-        hyp_textmsk = cv2.bitwise_and(hyp_textmsk, bubble_msk)
-        if global_mask is not None:
-            hyp_textmsk = cv2.bitwise_and(hyp_textmsk, global_mask)
-    return hyp_textmsk, bubble_msk
-
-def draw_connected_labels(num_labels, labels, stats, centroids, names="draw_connected_labels"):
-    labdraw = np.zeros((labels.shape[0], labels.shape[1], 3), dtype=np.uint8)
-    max_ind = np.argmax(stats[:, 4])
-    for ind, lab in enumerate((range(num_labels))):
-        if ind != max_ind:
-            randcolor = (random.randint(0,255), random.randint(0,255), random.randint(0,255))
-            labdraw[np.where(labels==lab)] = randcolor
-            maxr, minr = 0.5, 0.001
-            maxw, maxh = stats[max_ind][2] * maxr, stats[max_ind][3] * maxr
-            minarea = labdraw.shape[0] * labdraw.shape[1] * minr
-
-            stat = stats[ind]
-            bboxarea = stat[2] * stat[3]
-            if stat[2] < maxw and stat[3] < maxh and bboxarea > minarea:
-                pix = np.zeros((labels.shape[0], labels.shape[1]), dtype=np.uint8)
-                pix[np.where(labels==lab)] = 255
-
-                rect = cv2.minAreaRect(cv2.findNonZero(pix))
-                box = np.int0(cv2.boxPoints(rect))
-                labdraw = cv2.drawContours(labdraw, [box], 0, randcolor, 2)
-                labdraw = cv2.circle(labdraw, (int(centroids[ind][0]),int(centroids[ind][1])), radius=5, color=(random.randint(0,255), random.randint(0,255), random.randint(0,255)), thickness=-1)                
-
-    cv2.imshow(names, labdraw)
-    return labdraw
+from utils.textmask import refine_mask
 
 def model2annotations(model_path, img_dir_list, save_dir):
     if isinstance(img_dir_list, str):
@@ -199,7 +51,7 @@ def model2annotations(model_path, img_dir_list, save_dir):
         # num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(mask)
         # _, mask = cv2.threshold(mask, 50, 255, cv2.THRESH_BINARY)
         # draw_connected_labels(num_labels, labels, stats, centroids)
-        visualize_annotations(img, blk_list)
+        visualize_textblocks(img, blk_list)
         cv2.imshow('rst', img)
         cv2.imshow('mask', mask)
         cv2.waitKey(0)
@@ -255,7 +107,7 @@ def draw_textlines(img, polys,  color=(255, 0, 0)):
     for poly in polys:
         cv2.polylines(img,[poly],True,color=color, thickness=2)
 
-def visualize_annotations(canvas, blk_list):
+def visualize_textblocks(canvas, blk_list):
     lw = max(round(sum(canvas.shape) / 2 * 0.003), 2)  # line width
     for ii, blk in enumerate(blk_list):
         bx1, by1, bx2, by2 = blk.xyxy
@@ -268,105 +120,6 @@ def visualize_annotations(canvas, blk_list):
         cv2.putText(canvas, str(blk.angle), center, cv2.FONT_HERSHEY_SIMPLEX, 1, (127,127,255), 2)
         cv2.putText(canvas, str(ii), (bx1, by1 + lw + 2), 0, lw / 3, (255,127,127), max(lw-1, 1), cv2.LINE_AA)
 
-def hex2bgr(hex):
-    gmask = 254 << 8
-    rmask = 254
-    b = hex >> 16
-    g = (hex & gmask) >> 8
-    r = hex & rmask
-    return np.stack([b, g, r]).transpose()
-
-def get_topk_color(color_list, bins, k=3, color_var=10, bin_tol=0.001):
-    top_colors = [color_list[0]]
-    bin_tol = np.sum(bins) * bin_tol
-    if len(color_list) > 1:
-        for color, bin in zip(color_list[1:], bins[1:]):
-            if np.abs(np.array(top_colors) - color).min() > color_var:
-                top_colors.append(color)
-            if len(top_colors) >= k or bin < bin_tol:
-                break
-    return top_colors
-
-def minxor_thresh(threshed, mask, dilate=False):
-    neg_threshed = 255 - threshed
-    e_size = 1
-    if dilate:
-        element = cv2.getStructuringElement(cv2.MORPH_RECT, (2 * e_size + 1, 2 * e_size + 1),(e_size, e_size))
-        neg_threshed = cv2.dilate(neg_threshed, element, iterations=1)
-        threshed = cv2.dilate(threshed, element, iterations=1)
-    neg_xor_sum = cv2.bitwise_xor(neg_threshed, mask).sum()
-    xor_sum = cv2.bitwise_xor(threshed, mask).sum()
-    if neg_xor_sum < xor_sum:
-        return neg_threshed, neg_xor_sum
-    else:
-        return threshed, xor_sum
-
-def merge_mask_list(mask_list, pred_mask, line_mask=None, pred_thresh=30):
-    mask_list.sort(key=lambda x: x[1])
-    if pred_thresh > 0:
-        # pred_mask = ((pred_mask > pred_thresh) * 255).astype(np.uint8)
-        e_size = 1
-        element = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * e_size + 1, 2 * e_size + 1),(e_size, e_size))
-        # _, pred_mask = cv2.threshold(pred_mask, 70, 255, cv2.THRESH_OTSU+cv2.THRESH_BINARY)        
-        pred_mask = cv2.erode(pred_mask, element, iterations=1)
-        _, pred_mask = cv2.threshold(pred_mask, 70, 255, cv2.THRESH_BINARY)
-    connectivity = 4
-    bbox_area_thresh = pred_mask.shape[0] * pred_mask.shape[1] / 20000
-    mask_merged = np.zeros_like(pred_mask)
-    for ii, (candidate_mask, xor_sum) in enumerate(mask_list):
-        num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(candidate_mask, connectivity, cv2.CV_16U)
-        draw_connected_labels(num_labels, labels, stats, centroids, names='conn-'+str(ii))
-        for label_index, stat, centroid in zip(range(num_labels), stats, centroids):
-            if label_index != 0: # skip background label
-                x, y, w, h, area = stat
-                if w * h < bbox_area_thresh:
-                    continue
-                area *= 255
-                x1, y1, x2, y2 = x, y, x+w, y+h
-                label_local = labels[y1: y2, x1: x2]
-                label_cordinates = np.where(label_local==label_index)
-                tmp_merged = np.zeros_like(label_local, np.uint8)
-                tmp_merged[label_cordinates] = 255
-                tmp_merged = cv2.bitwise_or(mask_merged[y1: y2, x1: x2], tmp_merged)
-                xor_merged = cv2.bitwise_xor(tmp_merged, pred_mask[y1: y2, x1: x2]).sum()
-                xor_origin = cv2.bitwise_xor(mask_merged[y1: y2, x1: x2], pred_mask[y1: y2, x1: x2]).sum()
-                if xor_merged < xor_origin:
-                    mask_merged[y1: y2, x1: x2] = tmp_merged
-                # text_score = andmap.sum() / area
-                # if text_score > text_score_thresh:
-                #     mask_merged[y1: y2, x1: x2] = tmp_merged
-        cv2.imshow('threshed-'+str(ii), mask_merged)
-    cv2.imshow('pred-mask', pred_mask)
-
-def refine_mask(img: np.asanyarray, pred_mask: np.asanyarray, blk_list: List[TextBlock]) -> np.asanyarray:
-    for blk in blk_list:
-        bx1, by1, bx2, by2 = expand_textwindow(img.shape, blk.xyxy, expand_r=16)
-        im = np.ascontiguousarray(img[by1: by2, bx1: bx2])
-        im_grey = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)
-        msk = np.ascontiguousarray(pred_mask[by1: by2, bx1: bx2])
-        candidate_grey_px = im_grey[np.where(cv2.erode(msk, np.ones((3,3), np.uint8), iterations=1) > 127)]
-        bin, his = np.histogram(candidate_grey_px, bins=255)
-        idx = np.argsort(bin * -1)
-        his = his[idx]
-        bin = bin[idx]
-        topk_color = get_topk_color(his, bin)
-        color_range = 20
-        mask_list = []
-        for ii, color in enumerate(topk_color):
-            c_top = min(color+color_range, 255)
-            c_bottom = c_top - 2 * color_range
-            threshed = cv2.inRange(im_grey, c_bottom, c_top)
-            threshed, xor_sum = minxor_thresh(threshed, msk)
-            mask_list.append([threshed, xor_sum])
-        merge_mask_list(mask_list, msk)
-        # comp_list.sort(key=lambda x: x[1])
-        # for ii, (threshed, xor_sum) in enumerate(comp_list):
-        #     cv2.imshow('threshed-'+str(ii), threshed)
-        cv2.imshow('im', im)
-        cv2.imshow('msk', msk)
-        cv2.waitKey(0)
-    return msk
-
 class TextDetector:
     lang_list = ['eng', 'ja', 'unknown']
     langcls2idx = {'eng': 0, 'ja': 1, 'unknown': 2}
@@ -378,7 +131,7 @@ class TextDetector:
         if self.backend == 'torch':
             self.net = TextDetBase(model_path, device=device, act=act)
         else:
-            # TODO: OPENCV ONNX INF
+            # TODO: OPENCV ONNX INFERENCE
             providers = ['CUDAExecutionProvider', 'CPUExecutionProvider'] if cuda else ['CPUExecutionProvider']
             self.session = onnxruntime.InferenceSession(model_path, providers=providers)
         if isinstance(input_size, int):
@@ -408,7 +161,7 @@ class TextDetector:
         box_thresh = 0.6
         idx = np.where(scores[0] > box_thresh)
         lines, scores = lines[0][idx], scores[0][idx]
-
+        
         # map output to input img
         mask = mask[: mask.shape[0]-dh, : mask.shape[1]-dw]
         mask = cv2.resize(mask, (im_w, im_h), interpolation=cv2.INTER_LINEAR)
@@ -419,11 +172,9 @@ class TextDetector:
             lines[..., 0] *= resize_ratio[0]
             lines[..., 1] *= resize_ratio[1]
             lines = lines.astype(np.int32)
-
         blk_list = group_output(blks, lines, im_w, im_h, mask)
         mask = refine_mask(img, mask, blk_list)
         return mask, blk_list
-
 
 def traverse_by_dict(img_dir_list, dict_dir):
     if isinstance(img_dir_list, str):
@@ -442,7 +193,7 @@ def traverse_by_dict(img_dir_list, dict_dir):
         mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
         refine_mask(img, mask, blk_list)
 
-        visualize_annotations(img, blk_list)
+        visualize_textblocks(img, blk_list)
         cv2.imshow('im', img)
         cv2.imshow('mask', mask)
         cv2.waitKey(0)
@@ -452,11 +203,11 @@ if __name__ == '__main__':
     model_path = 'data/textdetector.pt'
     # textdet = TextDetector(model_path, device=device, input_size=1024, act=True)
 
-    img_dir = r'E:\learning\testpacks\tmp'
+    img_dir = r'D:\neonbub\mainproj\wan\data\testpacks\tmp'
     # img_dir = r'E:\learning\wan-master\data\testpacks\eng'
     save_dir = r'data\backup'
-    # model2annotations(model_path, img_dir, save_dir)
-    traverse_by_dict(img_dir, save_dir)
+    model2annotations(model_path, img_dir, save_dir)
+    # traverse_by_dict(img_dir, save_dir)
     # cuda = True
     # providers = ['CUDAExecutionProvider', 'CPUExecutionProvider'] if cuda else ['CPUExecutionProvider']
     # session = onnxruntime.InferenceSession(r'data\textdetector.pt.onnx', providers=providers)

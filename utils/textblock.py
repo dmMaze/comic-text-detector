@@ -132,7 +132,7 @@ def sort_textblk_list(blk_list: List[TextBlock], im_w: int, im_h: int) -> List[T
     
     for blk, weight in zip(blk_list, grid_weights):
         blk.weight = weight
-    blk_list = sorted(blk_list, key=lambda blk: blk.weight)
+    blk_list.sort(key=lambda blk: blk.weight)
     return blk_list
 
 def examine_textblk(blk: TextBlock, im_w: int, im_h: int, eval_orientation: bool, sort: bool = False) -> None:
@@ -201,7 +201,7 @@ def try_merge_textline(blk: TextBlock, blk2: TextBlock, fntsize_tol=1.3, distanc
 def merge_textlines(blk_list: List[TextBlock]) -> List[TextBlock]:
     if len(blk_list) < 2:
         return blk_list
-    blk_list = sorted(blk_list, key=lambda blk: blk.distance[0])
+    blk_list.sort(key=lambda blk: blk.distance[0])
     merged_list = list()
     for ii, current_blk in enumerate(blk_list):
         if current_blk.merged:
