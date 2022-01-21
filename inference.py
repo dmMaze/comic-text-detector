@@ -9,7 +9,7 @@ from pathlib import Path
 import torch
 import onnxruntime
 from utils.db_utils import SegDetectorRepresenter
-from utils.imgio_utils import imread, imwrite, find_all_imgs
+from utils.io_utils import imread, imwrite, find_all_imgs, NumpyEncoder
 from utils.imgproc_utils import letterbox, xyxy2yolo, get_yololabel_strings
 from utils.textblock import TextBlock, group_output
 import json
@@ -62,7 +62,7 @@ def model2annotations(model_path, img_dir_list, save_dir):
             polys = polys.reshape(-1, 8)
             np.savetxt(poly_save_path, polys, fmt='%d')
         with open(osp.join(save_dir, imname+'.json'), 'w', encoding='utf8') as f:
-            f.write(json.dumps(blk_dict_list, ensure_ascii=False))
+            f.write(json.dumps(blk_dict_list, ensure_ascii=False, cls=NumpyEncoder))
         cv2.imwrite(osp.join(save_dir, imgname), img)
         cv2.imwrite(osp.join(save_dir, maskname), mask)
 
@@ -173,7 +173,7 @@ class TextDetector:
             lines[..., 1] *= resize_ratio[1]
             lines = lines.astype(np.int32)
         blk_list = group_output(blks, lines, im_w, im_h, mask)
-        mask = refine_mask(img, mask, blk_list)
+        # mask = refine_mask(img, mask, blk_list)
         return mask, blk_list
 
 def traverse_by_dict(img_dir_list, dict_dir):
@@ -191,7 +191,7 @@ def traverse_by_dict(img_dir_list, dict_dir):
             blk_list = [TextBlock(**blk_dict) for blk_dict in blk_dict_list]
         img = cv2.imread(img_path)
         mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
-        refine_mask(img, mask, blk_list)
+        mask = refine_mask(img, mask, blk_list)
 
         visualize_textblocks(img, blk_list)
         cv2.imshow('im', img)
@@ -203,11 +203,13 @@ if __name__ == '__main__':
     model_path = 'data/textdetector.pt'
     # textdet = TextDetector(model_path, device=device, input_size=1024, act=True)
 
-    img_dir = r'D:\neonbub\mainproj\wan\data\testpacks\tmp'
+    # img_dir = r'D:\neonbub\mainproj\wan\data\testpacks\tmp'
     # img_dir = r'E:\learning\wan-master\data\testpacks\eng'
+    img_dir = r'E:\learning\testpacks\tmp'
     save_dir = r'data\backup'
-    model2annotations(model_path, img_dir, save_dir)
-    # traverse_by_dict(img_dir, save_dir)
+
+    # model2annotations(model_path, img_dir, save_dir)
+    traverse_by_dict(img_dir, save_dir)
     # cuda = True
     # providers = ['CUDAExecutionProvider', 'CPUExecutionProvider'] if cuda else ['CPUExecutionProvider']
     # session = onnxruntime.InferenceSession(r'data\textdetector.pt.onnx', providers=providers)

@@ -9,6 +9,7 @@ from .imgproc_utils import union_area, xywh2xyxypoly
 LANG_LIST = ['eng', 'ja', 'unknown']
 LANGCLS2IDX = {'eng': 0, 'ja': 1, 'unknown': 2}
 
+
 class TextBlock(object):
     def __init__(self, xyxy: List, 
                        lines: List = None, 
@@ -79,24 +80,24 @@ class TextBlock(object):
 
     def to_dict(self, extra_info=False):
         blk_dict = copy.deepcopy(vars(self))
-        if not isinstance(self.xyxy, List):
-            blk_dict['xyxy'] = blk_dict['xyxy'].tolist()
-        blk_dict['lines'] = []
-        for line in self.lines:
-            if not isinstance(line, List):
-                blk_dict['lines'].append(line.tolist())
-            else:
-                blk_dict['lines'].append(line)
-        blk_dict['vertical'] = bool(self.vertical)
-        blk_dict['merged'] = bool(self.merged)
+        # if not isinstance(self.xyxy, List):
+        #     blk_dict['xyxy'] = blk_dict['xyxy'].tolist()
+        # blk_dict['lines'] = []
+        # for line in self.lines:
+        #     if not isinstance(line, List):
+        #         blk_dict['lines'].append(line.tolist())
+        #     else:
+        #         blk_dict['lines'].append(line)
+        # blk_dict['vertical'] = bool(self.vertical)
+        # blk_dict['merged'] = bool(self.merged)
         if not extra_info:
             blk_dict.pop('distance')
             blk_dict.pop('weight')
             blk_dict.pop('vec')
             blk_dict.pop('norm')
-        else:
-            blk_dict['distance'] = self.distance.tolist()
-            blk_dict['vec'] = self.vec.tolist()
+        # else:
+        #     blk_dict['distance'] = self.distance.tolist()
+        #     blk_dict['vec'] = self.vec.tolist()
 
         return blk_dict
 

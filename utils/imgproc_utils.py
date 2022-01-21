@@ -137,27 +137,32 @@ def expand_textwindow(img_size, xyxy, expand_r=8, shrink=False):
     x2, y2 = min(im_w-1, x2+paddings), min(im_h-1, y2+paddings)
     return [x1, y1, x2, y2]
 
-def draw_connected_labels(num_labels, labels, stats, centroids, names="draw_connected_labels"):
+def draw_connected_labels(num_labels, labels, stats, centroids, names="draw_connected_labels", skip_background=True):
     labdraw = np.zeros((labels.shape[0], labels.shape[1], 3), dtype=np.uint8)
-    max_ind = np.argmax(stats[:, 4])
-    for ind, lab in enumerate((range(num_labels))):
-        if ind != max_ind:
-            randcolor = (random.randint(0,255), random.randint(0,255), random.randint(0,255))
-            labdraw[np.where(labels==lab)] = randcolor
-            maxr, minr = 0.5, 0.001
-            maxw, maxh = stats[max_ind][2] * maxr, stats[max_ind][3] * maxr
-            minarea = labdraw.shape[0] * labdraw.shape[1] * minr
+    max_ind = 0
+    if isinstance(num_labels, int):
+        num_labels = range(num_labels)
+    
+    # for ind, lab in enumerate((range(num_labels))):
+    for lab in num_labels:
+        if skip_background and lab == 0:
+            continue
+        randcolor = (random.randint(0,255), random.randint(0,255), random.randint(0,255))
+        labdraw[np.where(labels==lab)] = randcolor
+        maxr, minr = 0.5, 0.001
+        maxw, maxh = stats[max_ind][2] * maxr, stats[max_ind][3] * maxr
+        minarea = labdraw.shape[0] * labdraw.shape[1] * minr
 
-            stat = stats[ind]
-            bboxarea = stat[2] * stat[3]
-            if stat[2] < maxw and stat[3] < maxh and bboxarea > minarea:
-                pix = np.zeros((labels.shape[0], labels.shape[1]), dtype=np.uint8)
-                pix[np.where(labels==lab)] = 255
+        stat = stats[lab]
+        bboxarea = stat[2] * stat[3]
+        if stat[2] < maxw and stat[3] < maxh and bboxarea > minarea:
+            pix = np.zeros((labels.shape[0], labels.shape[1]), dtype=np.uint8)
+            pix[np.where(labels==lab)] = 255
 
-                rect = cv2.minAreaRect(cv2.findNonZero(pix))
-                box = np.int0(cv2.boxPoints(rect))
-                labdraw = cv2.drawContours(labdraw, [box], 0, randcolor, 2)
-                labdraw = cv2.circle(labdraw, (int(centroids[ind][0]),int(centroids[ind][1])), radius=5, color=(random.randint(0,255), random.randint(0,255), random.randint(0,255)), thickness=-1)                
+            rect = cv2.minAreaRect(cv2.findNonZero(pix))
+            box = np.int0(cv2.boxPoints(rect))
+            labdraw = cv2.drawContours(labdraw, [box], 0, randcolor, 2)
+            labdraw = cv2.circle(labdraw, (int(centroids[lab][0]),int(centroids[lab][1])), radius=5, color=(random.randint(0,255), random.randint(0,255), random.randint(0,255)), thickness=-1)                
 
     cv2.imshow(names, labdraw)
     return labdraw
