@@ -15,7 +15,7 @@ from tqdm import tqdm
 import pandas as pd
 import sys
 sys.path.append(os.getcwd())
-from utils.imgio_utils import find_all_imgs, imread, imwrite
+from utils.io_utils import find_all_imgs, imread, imwrite
 from utils.imgproc_utils import *
 
 ALIGN_LEFT = 0
@@ -24,8 +24,6 @@ ALIGN_RIGHT = 2
 
 ORIENTATION_HOR = 0
 ORIENTATION_VER = 1
-
-
 
 def get_textlines_from_langdict(lang_dict, num_line, line_len, sampler=None):
     textlines = []

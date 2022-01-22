@@ -1,5 +1,14 @@
 import numpy as np
 import cv2
+import random
+
+def hex2bgr(hex):
+    gmask = 254 << 8
+    rmask = 254
+    b = hex >> 16
+    g = (hex & gmask) >> 8
+    r = hex & rmask
+    return np.stack([b, g, r]).transpose()
 
 def union_area(bboxa, bboxb):
     x1 = max(bboxa[0], bboxb[0])
@@ -51,7 +60,9 @@ def yolo_xywh2xyxy(xywh: np.array, w: int, h:  int, to_int=True):
     xywh[:, [2, 3]] += xywh[:, [0, 1]]
     return xywh.astype(np.int64)
 
-def rotate_polygons(center, polygons, rotation, new_center, to_int=True):
+def rotate_polygons(center, polygons, rotation, new_center=None, to_int=True):
+    if new_center is None:
+        new_center = center
     rotation = np.deg2rad(rotation)
     s, c = np.sin(rotation), np.cos(rotation)
     polygons = polygons.astype(np.float32)
@@ -114,5 +125,47 @@ def resize_keepasp(im, new_shape=640, scaleup=True, interpolation=cv2.INTER_LINE
 
     if shape[::-1] != new_unpad:  # resize
         im = cv2.resize(im, new_unpad, interpolation=interpolation)
-
     return im
+
+def expand_textwindow(img_size, xyxy, expand_r=8, shrink=False):
+    im_h, im_w = img_size[:2]
+    x1, y1 , x2, y2 = xyxy
+    w = x2 - x1
+    h = y2 - y1
+    paddings = int(round((max(h, w) * 0.25 + min(h, w) * 0.75) / expand_r))
+    if shrink:
+        paddings *= -1
+    x1, y1 = max(0, x1 - paddings), max(0, y1 - paddings)
+    x2, y2 = min(im_w-1, x2+paddings), min(im_h-1, y2+paddings)
+    return [x1, y1, x2, y2]
+
+def draw_connected_labels(num_labels, labels, stats, centroids, names="draw_connected_labels", skip_background=True):
+    labdraw = np.zeros((labels.shape[0], labels.shape[1], 3), dtype=np.uint8)
+    max_ind = 0
+    if isinstance(num_labels, int):
+        num_labels = range(num_labels)
+    
+    # for ind, lab in enumerate((range(num_labels))):
+    for lab in num_labels:
+        if skip_background and lab == 0:
+            continue
+        randcolor = (random.randint(0,255), random.randint(0,255), random.randint(0,255))
+        labdraw[np.where(labels==lab)] = randcolor
+        maxr, minr = 0.5, 0.001
+        maxw, maxh = stats[max_ind][2] * maxr, stats[max_ind][3] * maxr
+        minarea = labdraw.shape[0] * labdraw.shape[1] * minr
+
+        stat = stats[lab]
+        bboxarea = stat[2] * stat[3]
+        if stat[2] < maxw and stat[3] < maxh and bboxarea > minarea:
+            pix = np.zeros((labels.shape[0], labels.shape[1]), dtype=np.uint8)
+            pix[np.where(labels==lab)] = 255
+
+            rect = cv2.minAreaRect(cv2.findNonZero(pix))
+            box = np.int0(cv2.boxPoints(rect))
+            labdraw = cv2.drawContours(labdraw, [box], 0, randcolor, 2)
+            labdraw = cv2.circle(labdraw, (int(centroids[lab][0]),int(centroids[lab][1])), radius=5, color=(random.randint(0,255), random.randint(0,255), random.randint(0,255)), thickness=-1)                
+
+    cv2.imshow(names, labdraw)
+    return labdraw
+
