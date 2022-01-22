@@ -207,8 +207,6 @@ class TextDetector(nn.Module):
                 outs = self.seg_net(*outs, forward_mode=forward_mode)
             return self.dbnet(*outs)
 
-
-
 def get_base_det_models(model_path, device='cpu', half=False, act='leaky'):
     textdetector_dict = torch.load(model_path, map_location=device)
     blk_det = load_yolov5_ckpt(textdetector_dict['blk_det'], map_location=device)

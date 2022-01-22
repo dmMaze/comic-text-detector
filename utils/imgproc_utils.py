@@ -60,7 +60,9 @@ def yolo_xywh2xyxy(xywh: np.array, w: int, h:  int, to_int=True):
     xywh[:, [2, 3]] += xywh[:, [0, 1]]
     return xywh.astype(np.int64)
 
-def rotate_polygons(center, polygons, rotation, new_center, to_int=True):
+def rotate_polygons(center, polygons, rotation, new_center=None, to_int=True):
+    if new_center is None:
+        new_center = center
     rotation = np.deg2rad(rotation)
     s, c = np.sin(rotation), np.cos(rotation)
     polygons = polygons.astype(np.float32)

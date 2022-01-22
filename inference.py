@@ -1,5 +1,5 @@
+import json
 from basemodel import TextDetBase
-from utils.yolov5_utils import non_max_suppression
 import os.path as osp
 from tqdm import tqdm
 import numpy as np
@@ -8,12 +8,13 @@ import torch
 from pathlib import Path
 import torch
 import onnxruntime
+from utils.yolov5_utils import non_max_suppression
 from utils.db_utils import SegDetectorRepresenter
 from utils.io_utils import imread, imwrite, find_all_imgs, NumpyEncoder
 from utils.imgproc_utils import letterbox, xyxy2yolo, get_yololabel_strings
-from utils.textblock import TextBlock, group_output
-import json
-from utils.textmask import refine_mask
+from utils.textblock import TextBlock, group_output, visualize_textblocks
+from utils.textmask import refine_mask, refine_undetected_mask, REFINEMASK_INPAINT, REFINEMASK_ANNOTATION
+
 
 def model2annotations(model_path, img_dir_list, save_dir):
     if isinstance(img_dir_list, str):
@@ -31,7 +32,7 @@ def model2annotations(model_path, img_dir_list, save_dir):
         imname = imgname.replace(Path(imgname).suffix, '')
         maskname = 'mask-'+imname+'.png'
         poly_save_path = osp.join(save_dir, 'line-' + imname + '.txt')
-        mask, blk_list = model(img)
+        mask, mask_refined, blk_list = model(img)
         polys = []
         blk_xyxy = []
         blk_dict_list = []
@@ -54,6 +55,7 @@ def model2annotations(model_path, img_dir_list, save_dir):
         visualize_textblocks(img, blk_list)
         cv2.imshow('rst', img)
         cv2.imshow('mask', mask)
+        cv2.imshow('mask_refined', mask_refined)
         cv2.waitKey(0)
 
         if len(polys) != 0:
@@ -84,7 +86,7 @@ def postprocess_mask(img: torch.Tensor, thresh=None):
         img = img > thresh
     img = img * 255
     if img.device != 'cpu':
-        img = img.detach().cpu()
+        img = img.detach_().cpu()
     img = img.numpy().astype(np.uint8)
     return img
 
@@ -103,22 +105,7 @@ def postprocess_yolo(det, conf_thresh, nms_thresh, resize_ratio, sort_func=None)
     cls = det[..., 5].astype(np.int32)
     return blines, cls, confs
 
-def draw_textlines(img, polys,  color=(255, 0, 0)):
-    for poly in polys:
-        cv2.polylines(img,[poly],True,color=color, thickness=2)
 
-def visualize_textblocks(canvas, blk_list):
-    lw = max(round(sum(canvas.shape) / 2 * 0.003), 2)  # line width
-    for ii, blk in enumerate(blk_list):
-        bx1, by1, bx2, by2 = blk.xyxy
-        cv2.rectangle(canvas, (bx1, by1), (bx2, by2), (127, 255, 127), lw)
-        lines = blk.lines_array(dtype=np.int32)
-        for jj, line in enumerate(lines):
-            cv2.putText(canvas, str(jj), line[0], cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,127,0), 1)
-            cv2.polylines(canvas, [line], True, (0,127,255), 2)
-        center = [int((bx1 + bx2)/2), int((by1 + by2)/2)]
-        cv2.putText(canvas, str(blk.angle), center, cv2.FONT_HERSHEY_SIMPLEX, 1, (127,127,255), 2)
-        cv2.putText(canvas, str(ii), (bx1, by1 + lw + 2), 0, lw / 3, (255,127,127), max(lw-1, 1), cv2.LINE_AA)
 
 class TextDetector:
     lang_list = ['eng', 'ja', 'unknown']
@@ -143,7 +130,7 @@ class TextDetector:
         self.nms_thresh = nms_thresh
         self.seg_rep = SegDetectorRepresenter(thresh=0.3)
 
-    def __call__(self, img):
+    def __call__(self, img, refine_mode=REFINEMASK_INPAINT, keep_undetected_mask=False):
         img_in, ratio, dw, dh = preprocess_img(img, input_size=self.input_size, device=self.device, half=self.half)
 
         im_h, im_w = img.shape[:2]
@@ -151,11 +138,7 @@ class TextDetector:
             blks, mask, lines_map = self.net(img_in)
         
         resize_ratio = (im_w / (self.input_size[0] - dw), im_h / (self.input_size[1] - dh))
-        blks = postprocess_yolo(blks[0], 
-                                self.conf_thresh, 
-                                self.nms_thresh, 
-                                resize_ratio, 
-                                sort_func=None)
+        blks = postprocess_yolo(blks[0], self.conf_thresh, self.nms_thresh, resize_ratio)
         mask = postprocess_mask(mask.squeeze_())
         lines, scores = self.seg_rep(self.input_size, lines_map)
         box_thresh = 0.6
@@ -173,8 +156,11 @@ class TextDetector:
             lines[..., 1] *= resize_ratio[1]
             lines = lines.astype(np.int32)
         blk_list = group_output(blks, lines, im_w, im_h, mask)
-        # mask = refine_mask(img, mask, blk_list)
-        return mask, blk_list
+        mask_refined = refine_mask(img, mask, blk_list, refine_mode=refine_mode)
+        if keep_undetected_mask:
+            mask_refined = refine_undetected_mask(img, mask, mask_refined, blk_list, refine_mode=refine_mode)
+    
+        return mask, mask_refined, blk_list
 
 def traverse_by_dict(img_dir_list, dict_dir):
     if isinstance(img_dir_list, str):
@@ -203,12 +189,14 @@ if __name__ == '__main__':
     model_path = 'data/textdetector.pt'
     # textdet = TextDetector(model_path, device=device, input_size=1024, act=True)
 
-    # img_dir = r'D:\neonbub\mainproj\wan\data\testpacks\tmp'
+    img_dir = r'D:\neonbub\mainproj\wan\data\testpacks\eng_rotated'
+    img_dir = r'data\dataset\tmp'
+    img_dir = r'D:\neonbub\mainproj\wan\data\testpacks\tmp'
     # img_dir = r'E:\learning\wan-master\data\testpacks\eng'
-    img_dir = r'E:\learning\testpacks\tmp'
+    # img_dir = r'E:\learning\testpacks\tmp'
     save_dir = r'data\backup'
 
-    # model2annotations(model_path, img_dir, save_dir)
+    model2annotations(model_path, img_dir, save_dir)
     traverse_by_dict(img_dir, save_dir)
     # cuda = True
     # providers = ['CUDAExecutionProvider', 'CPUExecutionProvider'] if cuda else ['CPUExecutionProvider']

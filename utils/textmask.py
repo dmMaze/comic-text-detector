@@ -10,6 +10,9 @@ BLACK = (0, 0, 0)
 LANG_ENG = 0
 LANG_JPN = 1
 
+REFINEMASK_INPAINT = 0
+REFINEMASK_ANNOTATION = 1
+
 def get_topk_color(color_list, bins, k=3, color_var=10, bin_tol=0.001):
     idx = np.argsort(bins * -1)
     color_list, bins = color_list[idx], bins[idx]
@@ -37,7 +40,7 @@ def minxor_thresh(threshed, mask, dilate=False):
     else:
         return threshed, xor_sum
 
-def get_otsuthresh_masklist(img, pred_mask, per_channel=False) -> List[np.asanyarray]:
+def get_otsuthresh_masklist(img, pred_mask, per_channel=False) -> List[np.ndarray]:
     channels = [img[..., 0], img[..., 1], img[..., 2]]
     mask_list = []
     for c in channels:
@@ -67,7 +70,7 @@ def get_topk_masklist(im_grey, pred_mask):
         mask_list.append([threshed, xor_sum])
     return mask_list
 
-def merge_mask_list(mask_list, pred_mask, blk: TextBlock = None, pred_thresh=30, text_window=None, filter_with_lines=False):
+def merge_mask_list(mask_list, pred_mask, blk: TextBlock = None, pred_thresh=30, text_window=None, filter_with_lines=False, refine_mode=REFINEMASK_INPAINT):
     mask_list.sort(key=lambda x: x[1])
     linemask = None
     if blk is not None and filter_with_lines:
@@ -103,7 +106,9 @@ def merge_mask_list(mask_list, pred_mask, blk: TextBlock = None, pred_thresh=30,
                 xor_origin = cv2.bitwise_xor(mask_merged[y1: y2, x1: x2], pred_mask[y1: y2, x1: x2]).sum()
                 if xor_merged < xor_origin:
                     mask_merged[y1: y2, x1: x2] = tmp_merged
-    mask_merged = cv2.dilate(mask_merged, np.ones((3, 3), np.uint8), iterations=1)
+
+    if refine_mode == REFINEMASK_INPAINT:
+        mask_merged = cv2.dilate(mask_merged, np.ones((3, 3), np.uint8), iterations=1)
     # fill holes
     num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(255-mask_merged, connectivity, cv2.CV_16U)
     sorted_area = np.sort(stats[:, -1])
@@ -126,10 +131,8 @@ def merge_mask_list(mask_list, pred_mask, blk: TextBlock = None, pred_thresh=30,
                 mask_merged[y1: y2, x1: x2] = tmp_merged
     return mask_merged
 
-def refine_undetected_mask(img: np.asanyarray, 
-            mask_pred: np.asanyarray, 
-            mask_refined: np.asanyarray, 
-            blk_list: List[TextBlock]):
+
+def refine_undetected_mask(img: np.ndarray, mask_pred: np.ndarray, mask_refined: np.ndarray, blk_list: List[TextBlock], refine_mode=REFINEMASK_INPAINT):
     mask_pred[np.where(mask_refined > 30)] = 0
     _, pred_mask_t = cv2.threshold(mask_pred, 30, 255, cv2.THRESH_BINARY)
     num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(pred_mask_t, 4, cv2.CV_16U)
@@ -149,11 +152,11 @@ def refine_undetected_mask(img: np.asanyarray,
             if bbox_score / w / h < 0.5:
                 seg_blk_list.append(TextBlock(bbox))
     if len(seg_blk_list) > 0:
-        mask_refined = cv2.bitwise_or(mask_refined, refine_mask(img, mask_pred, seg_blk_list, refine_all_seg=False))
+        mask_refined = cv2.bitwise_or(mask_refined, refine_mask(img, mask_pred, seg_blk_list, refine_mode=refine_mode))
     return mask_refined
 
 
-def refine_mask(img: np.asanyarray, pred_mask: np.asanyarray, blk_list: List[TextBlock], refine_all_seg=True) -> np.asanyarray:
+def refine_mask(img: np.ndarray, pred_mask: np.ndarray, blk_list: List[TextBlock], refine_mode: int = REFINEMASK_INPAINT) -> np.ndarray:
     mask_refined = np.zeros_like(pred_mask)
     for blk in blk_list:
         bx1, by1, bx2, by2 = expand_textwindow(img.shape, blk.xyxy, expand_r=16)
@@ -161,38 +164,8 @@ def refine_mask(img: np.asanyarray, pred_mask: np.asanyarray, blk_list: List[Tex
         msk = np.ascontiguousarray(pred_mask[by1: by2, bx1: bx2])
         mask_list = get_topk_masklist(im, msk)
         mask_list += get_otsuthresh_masklist(im, msk, per_channel=False)
-        mask_merged = merge_mask_list(mask_list, msk, blk=blk, text_window=[bx1, by1, bx2, by2])
+        mask_merged = merge_mask_list(mask_list, msk, blk=blk, text_window=[bx1, by1, bx2, by2], refine_mode=refine_mode)
         mask_refined[by1: by2, bx1: bx2] = cv2.bitwise_or(mask_refined[by1: by2, bx1: bx2], mask_merged)
-        # inpainted = cv2.inpaint(im, mask_merged, 3, cv2.INPAINT_NS)
-        # cv2.imshow('im', im)
-        # cv2.imshow('msk', msk)
-        # cv2.imshow('inpainted', inpainted)
-        # cv2.imshow('mask_refined', mask_merged)
-        # cv2.waitKey(0)
-
-    # cv2.connectedComponentsWithStats is slow for the the whole large-scale image
-    # consider to do it  
-    # if refine_all_seg:
-    #     pred_mask[np.where(mask_refined > 30)] = 0
-    #     _, pred_mask_t = cv2.threshold(pred_mask, 30, 255, cv2.THRESH_BINARY)
-    #     num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(pred_mask_t, 4, cv2.CV_16U)
-    #     valid_labels = np.where(stats[:, -1] > 50)[0]
-    #     seg_blk_list = []
-    #     if len(valid_labels) > 0:
-    #         for lab_index in valid_labels[1:]:
-    #             x, y, w, h, area = stats[lab_index]
-    #             bx1, by1 = x, y
-    #             bx2, by2 = x+w, y+h
-    #             bbox = [bx1, by1, bx2, by2]
-    #             bbox_score = -1
-    #             for blk in blk_list:
-    #                 bbox_s = union_area(blk.xyxy, bbox)
-    #                 if bbox_s > bbox_score:
-    #                     bbox_score = bbox_s
-    #             if bbox_score / w / h < 0.5:
-    #                 seg_blk_list.append(TextBlock(bbox))
-    #     if len(seg_blk_list) > 0:
-    #         mask_refined = cv2.bitwise_or(mask_refined, refine_mask(img, pred_mask, seg_blk_list, refine_all_seg=False))
     return mask_refined
 
 # def extract_textballoon(img, pred_textmsk=None, global_mask=None):

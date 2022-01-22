@@ -1,14 +1,14 @@
-from mailbox import linesep
 from typing import List
 import numpy as np
 from shapely.geometry import Polygon
 import math
 import copy
-from .imgproc_utils import union_area, xywh2xyxypoly
+from .imgproc_utils import union_area, xywh2xyxypoly, rotate_polygons
+import cv2
+import functools
 
 LANG_LIST = ['eng', 'ja', 'unknown']
 LANGCLS2IDX = {'eng': 0, 'ja': 1, 'unknown': 2}
-
 
 class TextBlock(object):
     def __init__(self, xyxy: List, 
@@ -21,7 +21,8 @@ class TextBlock(object):
                        vec: List = None,
                        norm: float = -1,
                        merged: bool = False,
-                       weight: float = -1) -> None:
+                       weight: float = -1,
+                       **kwargs) -> None:
         self.xyxy = xyxy                    # boundingbox of textblock
         if lines is not None:
             self.lines = lines              # polygons of textlines
@@ -43,6 +44,17 @@ class TextBlock(object):
         self.merged = merged
         self.weight = weight
 
+        self.structure = None
+
+        self.text = list()
+        self.prob = None
+        self.fg_r = None
+        self.fg_g = None
+        self.fg_b = None
+        self.bg_r = None
+        self.bg_g = None
+        self.bg_b = None
+
     def adjust_bbox(self, with_bbox=False):
         lines = np.array(self.lines)
         if with_bbox:
@@ -62,15 +74,37 @@ class TextBlock(object):
             self.distance = self.distance[idx]
             lines = np.array(self.lines, dtype=np.int32)
             self.lines = lines[idx].tolist()
+            self.structure = self.structure[idx]
 
     def lines_array(self, dtype=np.float64):
         return np.array(self.lines, dtype=dtype)
 
+    @functools.cached_property
+    def aspect_ratio(self) -> float:
+        mini_rect = self.mini_rect
+        middle_pnts = (mini_rect[:, [1, 2, 3, 0]] + mini_rect) / 2
+        norm_v = np.linalg.norm(middle_pnts[:, 2] - middle_pnts[:, 0])
+        norm_h = np.linalg.norm(middle_pnts[:, 1] - middle_pnts[:, 3])
+        return norm_v / norm_h
+    
+    @functools.cached_property
+    def mini_rect(self):
+        center = [self.xyxy[0]/2, self.xyxy[1]/2]
+        polygons = self.lines_array().reshape(-1, 8)
+        rotated_polygons = rotate_polygons(center, polygons, self.angle)
+        min_x = rotated_polygons[:, ::2].min()
+        min_y = rotated_polygons[:, 1::2].min()
+        max_x = rotated_polygons[:, ::2].max()
+        max_y = rotated_polygons[:, 1::2].max()
+        min_bbox = np.array([[min_x, min_y, max_x, min_y, max_x, max_y, min_x, max_y]])
+        min_bbox = rotate_polygons(center, min_bbox, -self.angle)
+        return min_bbox.reshape(-1, 4, 2)
+
     def __getattribute__(self, name: str):
         if name == 'pts':
-            return self.list
-        else:
-            return object.__getattribute__(self, name)
+            return self.lines_array()
+        # else:
+        return object.__getattribute__(self, name)
 
     def __len__(self):
         return len(self.lines)
@@ -80,26 +114,40 @@ class TextBlock(object):
 
     def to_dict(self, extra_info=False):
         blk_dict = copy.deepcopy(vars(self))
-        # if not isinstance(self.xyxy, List):
-        #     blk_dict['xyxy'] = blk_dict['xyxy'].tolist()
-        # blk_dict['lines'] = []
-        # for line in self.lines:
-        #     if not isinstance(line, List):
-        #         blk_dict['lines'].append(line.tolist())
-        #     else:
-        #         blk_dict['lines'].append(line)
-        # blk_dict['vertical'] = bool(self.vertical)
-        # blk_dict['merged'] = bool(self.merged)
         if not extra_info:
             blk_dict.pop('distance')
             blk_dict.pop('weight')
             blk_dict.pop('vec')
             blk_dict.pop('norm')
-        # else:
-        #     blk_dict['distance'] = self.distance.tolist()
-        #     blk_dict['vec'] = self.vec.tolist()
-
         return blk_dict
+
+    def get_transformed_region(self, img, idx, textheight) -> np.ndarray :
+        [l1a, l1b, l2a, l2b] = [a.astype(np.float32) for a in self.structure[idx]]
+        v_vec = l2a - l1a
+        h_vec = l1b - l2b
+        ratio = np.linalg.norm(v_vec) / np.linalg.norm(h_vec)
+        src_pts = self.pts[idx].astype(np.float32)
+        direction = 'v' if self.vertical else 'h'
+        if direction == 'h' :
+            h = int(textheight)
+            w = int(round(textheight / ratio))
+            dst_pts = np.array([[0, 0], [w - 1, 0], [w - 1, h - 1], [0, h - 1]]).astype(np.float32)
+            M, _ = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
+            region = cv2.warpPerspective(img, M, (w, h))
+            return region
+        elif direction == 'v' :
+            w = int(textheight)
+            h = int(round(textheight * ratio))
+            dst_pts = np.array([[0, 0], [w - 1, 0], [w - 1, h - 1], [0, h - 1]]).astype(np.float32)
+            M, _ = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
+            region = cv2.warpPerspective(img, M, (w, h))
+            region = cv2.rotate(region, cv2.ROTATE_90_COUNTERCLOCKWISE)
+            # cv2.imshow('region'+str(idx), region)
+            # cv2.waitKey(0)
+            return region
+
+    def get_text(self):
+        return ' '.join(self.text)
 
 def sort_textblk_list(blk_list: List[TextBlock], im_w: int, im_h: int) -> List[TextBlock]:
     if len(blk_list) == 0:
@@ -156,6 +204,7 @@ def examine_textblk(blk: TextBlock, im_w: int, im_h: int, eval_orientation: bool
         primary_vec, primary_norm = h, norm_h
         distance_vectors = center_pnts - np.array([[0, 0]], dtype=np.float64)
         font_size = int(round(norm_v / len(lines)))
+    
     rotation_angle = int(math.atan2(primary_vec[1], primary_vec[0]) / math.pi * 180)     # rotation angle of textlines
     distance = np.linalg.norm(distance_vectors, axis=1)     # distance between textlinecenters and origin
     rad_matrix = np.arccos(np.einsum('ij, j->i', distance_vectors, primary_vec) / (distance * primary_norm))
@@ -167,6 +216,7 @@ def examine_textblk(blk: TextBlock, im_w: int, im_h: int, eval_orientation: bool
     blk.vertical = vertical
     blk.vec = primary_vec
     blk.norm = primary_norm
+    blk.structure = middle_pnts
     if sort:
         blk.sort_lines()
 
@@ -308,3 +358,18 @@ def group_output(blks, lines, im_w, im_h, mask=None, sort_blklist=True) -> List[
     if sort_blklist:
         final_blk_list = sort_textblk_list(final_blk_list, im_w, im_h)
     return final_blk_list
+
+def visualize_textblocks(canvas, blk_list:  List[TextBlock]):
+    lw = max(round(sum(canvas.shape) / 2 * 0.003), 2)  # line width
+    for ii, blk in enumerate(blk_list):
+        bx1, by1, bx2, by2 = blk.xyxy
+        cv2.rectangle(canvas, (bx1, by1), (bx2, by2), (127, 255, 127), lw)
+        lines = blk.lines_array(dtype=np.int32)
+        for jj, line in enumerate(lines):
+            cv2.putText(canvas, str(jj), line[0], cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,127,0), 1)
+            cv2.polylines(canvas, [line], True, (0,127,255), 2)
+        cv2.polylines(canvas, [blk.mini_rect], True, (127,127,0), 2)
+        center = [int((bx1 + bx2)/2), int((by1 + by2)/2)]
+        cv2.putText(canvas, str(blk.angle), center, cv2.FONT_HERSHEY_SIMPLEX, 1, (127,127,255), 2)
+        cv2.putText(canvas, str(ii), (bx1, by1 + lw + 2), 0, lw / 3, (255,127,127), max(lw-1, 1), cv2.LINE_AA)
+    return canvas
