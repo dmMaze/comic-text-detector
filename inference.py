@@ -191,13 +191,13 @@ if __name__ == '__main__':
 
     img_dir = r'D:\neonbub\mainproj\wan\data\testpacks\eng_rotated'
     img_dir = r'data\dataset\tmp'
-    img_dir = r'D:\neonbub\mainproj\wan\data\testpacks\tmp'
+    img_dir = r'D:\neonbub\comic-text-detector\data\dataset\buggy'
     # img_dir = r'E:\learning\wan-master\data\testpacks\eng'
     # img_dir = r'E:\learning\testpacks\tmp'
     save_dir = r'data\backup'
 
     model2annotations(model_path, img_dir, save_dir)
-    traverse_by_dict(img_dir, save_dir)
+    # traverse_by_dict(img_dir, save_dir)
     # cuda = True
     # providers = ['CUDAExecutionProvider', 'CPUExecutionProvider'] if cuda else ['CPUExecutionProvider']
     # session = onnxruntime.InferenceSession(r'data\textdetector.pt.onnx', providers=providers)
