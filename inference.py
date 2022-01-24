@@ -15,13 +15,12 @@ from utils.imgproc_utils import letterbox, xyxy2yolo, get_yololabel_strings
 from utils.textblock import TextBlock, group_output, visualize_textblocks
 from utils.textmask import refine_mask, refine_undetected_mask, REFINEMASK_INPAINT, REFINEMASK_ANNOTATION
 
-
 def model2annotations(model_path, img_dir_list, save_dir):
     if isinstance(img_dir_list, str):
         img_dir_list = [img_dir_list]
     cuda = torch.cuda.is_available()
     device = 'cuda' if cuda else 'cpu'
-    model = TextDetector(model_path=model_path, device=device, act='leaky')  
+    model = TextDetector(model_path=model_path, input_size=1024, device=device, act='leaky')  
     imglist = []
     for img_dir in img_dir_list:
         imglist += find_all_imgs(img_dir, abs_path=True)
@@ -32,7 +31,7 @@ def model2annotations(model_path, img_dir_list, save_dir):
         imname = imgname.replace(Path(imgname).suffix, '')
         maskname = 'mask-'+imname+'.png'
         poly_save_path = osp.join(save_dir, 'line-' + imname + '.txt')
-        mask, mask_refined, blk_list = model(img)
+        mask, mask_refined, blk_list = model(img, refine_mode=REFINEMASK_ANNOTATION, keep_undetected_mask=True)
         polys = []
         blk_xyxy = []
         blk_dict_list = []
@@ -66,7 +65,7 @@ def model2annotations(model_path, img_dir_list, save_dir):
         with open(osp.join(save_dir, imname+'.json'), 'w', encoding='utf8') as f:
             f.write(json.dumps(blk_dict_list, ensure_ascii=False, cls=NumpyEncoder))
         cv2.imwrite(osp.join(save_dir, imgname), img)
-        cv2.imwrite(osp.join(save_dir, maskname), mask)
+        cv2.imwrite(osp.join(save_dir, maskname), mask_refined)
 
 def preprocess_img(img, input_size=(1024, 1024), device='cpu', bgr2rgb=True, half=False, to_tensor=True):
     if bgr2rgb:
@@ -192,8 +191,10 @@ if __name__ == '__main__':
     img_dir = r'D:\neonbub\mainproj\wan\data\testpacks\eng_rotated'
     img_dir = r'data\dataset\tmp'
     img_dir = r'D:\neonbub\comic-text-detector\data\dataset\buggy'
+    img_dir = r'data\examples'
     # img_dir = r'E:\learning\wan-master\data\testpacks\eng'
     # img_dir = r'E:\learning\testpacks\tmp'
+    # img_dir = r'F:\dl\comic-text-detector\data\dataset\manga101'
     save_dir = r'data\backup'
 
     model2annotations(model_path, img_dir, save_dir)

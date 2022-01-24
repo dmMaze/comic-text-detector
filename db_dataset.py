@@ -17,7 +17,7 @@ from torchvision import transforms
 from torch.utils.data import DataLoader, Dataset, dataloader
 from utils.general import LOGGER, Loggers, CUDA, DEVICE
 from utils.db_utils import MakeBorderMap, MakeShrinkMap
-from dataset import augment_hsv
+from seg_dataset import augment_hsv
 from utils.imgproc_utils import rotate_polygons, letterbox, resize_keepasp
 from PIL import Image
 

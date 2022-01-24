@@ -6,7 +6,7 @@ from tqdm import tqdm
 import math
 from torch.cuda import amp
 import torch
-from loss import DBLoss
+from utils.loss import DBLoss
 import torch.nn as nn
 import yaml
 from basemodel import TextDetector

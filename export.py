@@ -11,7 +11,7 @@ from models.yolov5.common import Conv
 from models.yolov5.yolo import Detect
 import torch.nn as nn
 import time
-from dataset import letterbox
+from seg_dataset import letterbox
 from utils.yolov5_utils import fuse_conv_and_bn
 
 class SiLU(nn.Module):  # export-friendly version of nn.SiLU()
@@ -25,9 +25,6 @@ def concate_models(blk_weights, seg_weights, det_weights, save_path):
     textdetector_dict['text_seg'] = torch.load(seg_weights, map_location='cpu')['weights']
     textdetector_dict['text_det'] = torch.load(det_weights, map_location='cpu')['weights']
     torch.save(textdetector_dict, save_path)
-
-
-
 
 def export_onnx(model, im, file, opset, train=False, simplify=True, dynamic=False, inplace=False):
     # YOLOv5 ONNX export
@@ -60,9 +57,6 @@ def export_onnx(model, im, file, opset, train=False, simplify=True, dynamic=Fals
     onnx.save(model_onnx, f)
 
 if __name__ == '__main__':
-
-    
-
     batch_size, input_size = 1, 1024
     device = 'cpu'
     im = torch.zeros(batch_size, 3, input_size, input_size).to(device)
@@ -71,7 +65,7 @@ if __name__ == '__main__':
 
     # export_onnx(model, im, model_path, 11)
 
-    img_path = r'E:\learning\wan-master\data\testpacks\eng\000054.jpg'
+    img_path = r'000054.jpg'
     img = cv2.imread(img_path)
     img, ratio, (dw, dh) = letterbox(img, new_shape=(1024, 1024), auto=False, stride=64)
     # img = img.transpose((2, 0, 1))[::-1]  # HWC to CHW, BGR to RGB

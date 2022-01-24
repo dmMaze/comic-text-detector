@@ -24,27 +24,17 @@ class TextBlock(object):
                        weight: float = -1,
                        **kwargs) -> None:
         self.xyxy = xyxy                    # boundingbox of textblock
-        if lines is not None:
-            self.lines = lines              # polygons of textlines
-        else:
-            self.lines = []
+        self.lines = list() if lines is None else lines     # polygons of textlines
         self.vertical = vertical            # orientation of textlines
         self.language = language
         self.font_size = font_size
-        if distance is not None:            # distance between textlines and "origin"
-            self.distance = np.array(distance, np.float64)
-        else:
-            self.distance = None           
+        self.distance = None if distance is None else np.array(distance, np.float64)   # distance between textlines and "origin"          
         self.angle = angle                  # rotation angle of textlines
-        if vec is not None:                 # primary vector of textblock
-            self.vec = np.array(vec, np.float64)
-        else:
-            vec = None                     
+
+        self.vec = None if vec is None else np.array(vec, np.float64) # primary vector of textblock
         self.norm = norm                    # primary norm of textblock
         self.merged = merged
         self.weight = weight
-
-        self.structure = None
 
         self.text = list()
         self.prob = 1
@@ -75,7 +65,6 @@ class TextBlock(object):
             self.distance = self.distance[idx]
             lines = np.array(self.lines, dtype=np.int32)
             self.lines = lines[idx].tolist()
-            # self.structure = self.structure[idx]
 
     def lines_array(self, dtype=np.float64):
         return np.array(self.lines, dtype=dtype)
@@ -233,7 +222,6 @@ def examine_textblk(blk: TextBlock, im_w: int, im_h: int, eval_orientation: bool
     blk.vertical = vertical
     blk.vec = primary_vec
     blk.norm = primary_norm
-    # blk.structure = middle_pnts
     if sort:
         blk.sort_lines()
 
@@ -262,7 +250,6 @@ def try_merge_textline(blk: TextBlock, blk2: TextBlock, fntsize_tol=1.3, distanc
     blk.angle = int(round(np.rad2deg(math.atan2(vec_sum[1], vec_sum[0]))))
     blk.norm = np.linalg.norm(vec_sum)
     blk.distance = np.append(blk.distance, blk2.distance[-1])
-    # blk.structure = np.concatenate((blk.structure, blk2.structure))
     blk.font_size = fntsz_avg
     blk2.merged = True
     return True

@@ -1,12 +1,10 @@
 import torch
-
-
 from torch.optim import SGD, Adam, lr_scheduler
 from tqdm import tqdm
 import math
 from torch.cuda import amp
 import torch
-from loss import BinaryDiceLoss
+from utils.loss import BinaryDiceLoss
 import torch.nn as nn
 import yaml
 from basemodel import TextDetector
@@ -18,7 +16,7 @@ import os
 import shutil
 os.environ['NUMEXPR_MAX_THREADS'] = str(numexpr.detect_number_of_cores())
 
-from dataset import create_dataloader
+from seg_dataset import create_dataloader
 from utils.general import LOGGER, Loggers, CUDA, DEVICE
 import random
 
@@ -189,7 +187,6 @@ if __name__ == '__main__':
     with open(hyp_p, 'r', encoding='utf8') as f:
         hyp = yaml.safe_load(f.read())
 
-    
     hyp['data']['train_img_dir'] = [r'../datasets/codat_manga_v3/images/train', r'../datasets/ComicErased/processed']
     # hyp['data']['train_img_dir'] = [r'../datasets/codat_manga_v3/images/val']
     hyp['data']['val_img_dir'] = [r'../datasets/codat_manga_v3/images/val']
