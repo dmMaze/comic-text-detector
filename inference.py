@@ -16,6 +16,7 @@ from utils.imgproc_utils import letterbox, xyxy2yolo, get_yololabel_strings
 from utils.textblock import TextBlock, group_output, visualize_textblocks
 from utils.textmask import refine_mask, refine_undetected_mask, REFINEMASK_INPAINT, REFINEMASK_ANNOTATION
 from pathlib import Path
+from typing import Union
 
 def model2annotations(model_path, img_dir_list, save_dir):
     if isinstance(img_dir_list, str):
@@ -82,18 +83,21 @@ def preprocess_img(img, input_size=(1024, 1024), device='cpu', bgr2rgb=True, hal
                 img_in = img_in.half()
     return img_in, ratio, int(dw), int(dh)
 
-def postprocess_mask(img: torch.Tensor, thresh=None):
+def postprocess_mask(img: Union[torch.Tensor, np.ndarray], thresh=None):
     # img = img.permute(1, 2, 0)
     if isinstance(img, torch.Tensor):
         img = img.squeeze_()
+        if img.device != 'cpu':
+            img = img.detach_().cpu()
+        img = img.numpy()
+    else:
+        img = img.squeeze()
     if thresh is not None:
         img = img > thresh
     img = img * 255
-    if isinstance(img, torch.Tensor):
-        if img.device != 'cpu':
-            img = img.detach_().cpu()
-        img = img.numpy().astype(np.uint8)
-    return img
+    # if isinstance(img, torch.Tensor):
+
+    return img.astype(np.uint8)
 
 def postprocess_yolo(det, conf_thresh, nms_thresh, resize_ratio, sort_func=None):
     det = non_max_suppression(det, conf_thresh, nms_thresh)[0]
@@ -196,23 +200,6 @@ if __name__ == '__main__':
     device = 'cpu'
     model_path = 'data/comictextdetector.pt'
     # model_path = 'data/comictextdetector.pt.onnx'
-    # textdet = TextDetector(model_path, device=device, input_size=1024, act=True)
-
-    # img_dir = r'D:\neonbub\mainproj\wan\data\testpacks\eng_rotated'
-    # img_dir = r'data\dataset\tmp'
-    # img_dir = r'D:\neonbub\comic-text-detector\data\dataset\buggy'
     img_dir = r'data\examples'
-    # img_dir = r'E:\learning\wan-master\data\testpacks\eng'
-    # img_dir = r'E:\learning\testpacks\tmp'
-    # img_dir = r'F:\dl\comic-text-detector\data\dataset\manga101'
     save_dir = r'data\backup'
-
     model2annotations(model_path, img_dir, save_dir)
-    # traverse_by_dict(img_dir, save_dir)
-    # cuda = True
-    # providers = ['CUDAExecutionProvider', 'CPUExecutionProvider'] if cuda else ['CPUExecutionProvider']
-    # session = onnxruntime.InferenceSession(r'data\textdetector.pt.onnx', providers=providers)
-    
-    # img = cv2.imread(r'E:\learning\wan-master\data\testpacks\eng\000054.jpg')
-    # img_in, ratio, dw, dh = preprocess_img(img, to_tensor=False)
-    # cv2.dnn.readOnnx()

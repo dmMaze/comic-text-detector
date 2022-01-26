@@ -1,9 +1,9 @@
 import cv2
-from kornia import torch
 import numpy as np
 import pyclipper
 from shapely.geometry import Polygon
 from collections import namedtuple
+import torch
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -55,7 +55,9 @@ class SegDetectorRepresenter():
         segmentation = self.binarize(pred)
         boxes_batch = []
         scores_batch = []
-        for batch_index in range(pred.size(0)):
+        # print(pred.size())
+        batch_size = pred.size(0) if isinstance(pred, torch.Tensor) else pred.shape[0]
+        for batch_index in range(batch_size):
             # height, width = batch['shape'][batch_index]
             height, width = pred.shape[1], pred.shape[2]
             if is_output_polygon:
@@ -128,6 +130,8 @@ class SegDetectorRepresenter():
         if isinstance(pred, torch.Tensor):
             bitmap = _bitmap.cpu().numpy()  # The first channel
             pred = pred.cpu().detach().numpy()
+        else:
+            bitmap = _bitmap
         height, width = bitmap.shape
         contours, _ = cv2.findContours((bitmap * 255).astype(np.uint8), cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
         num_contours = min(len(contours), self.max_candidates)

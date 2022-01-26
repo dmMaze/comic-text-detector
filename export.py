@@ -41,7 +41,7 @@ def export_onnx(model, im, file, opset, train=False, simplify=True, dynamic=Fals
                         training=torch.onnx.TrainingMode.TRAINING if train else torch.onnx.TrainingMode.EVAL,
                         do_constant_folding=not train,
                         input_names=['images'],
-                        output_names=['blk', 'dummy1', 'dummy2', 'dummy3', 'seg', 'det'],
+                        output_names=['blk', 'seg', 'det'],
                         dynamic_axes={'images': {0: 'batch', 2: 'height', 3: 'width'},  # shape(1,3,640,640)
                                     'output': {0: 'batch', 1: 'anchors'}  # shape(1,25200,85)
                                     } if dynamic else None)
