@@ -1,4 +1,5 @@
 import cv2
+from kornia import torch
 import numpy as np
 import pyclipper
 from shapely.geometry import Polygon
@@ -124,8 +125,9 @@ class SegDetectorRepresenter():
         '''
 
         assert len(_bitmap.shape) == 2
-        bitmap = _bitmap.cpu().numpy()  # The first channel
-        pred = pred.cpu().detach().numpy()
+        if isinstance(pred, torch.Tensor):
+            bitmap = _bitmap.cpu().numpy()  # The first channel
+            pred = pred.cpu().detach().numpy()
         height, width = bitmap.shape
         contours, _ = cv2.findContours((bitmap * 255).astype(np.uint8), cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
         num_contours = min(len(contours), self.max_candidates)

@@ -1,3 +1,4 @@
+from matplotlib import lines
 from utils.general import CUDA, DEVICE
 from models.yolov5.yolo import Model
 import torch
@@ -240,8 +241,19 @@ class TextDetBase(nn.Module):
         blks, features = self.blk_det(features, detect=True)
         mask, features = self.text_seg(*features, forward_mode=TEXTDET_INFERENCE)
         lines = self.text_det(*features, step_eval=False)
-        return blks, mask, lines
-        # return blks
+        return blks[0], mask, lines
+
+class TextDetBaseDNN:
+    def __init__(self, input_size, model_path):
+        self.input_size = input_size
+        self.model = cv2.dnn.readNetFromONNX(model_path)
+        self.uoln = self.model.getUnconnectedOutLayersNames()
+    
+    def __call__(self, im_in):
+        blob = cv2.dnn.blobFromImage(im_in, scalefactor=1 / 255.0, size=(self.input_size, self.input_size))
+        self.model.setInput(blob)
+        blks, mask, lines_map  = self.model.forward(self.uoln)
+        return blks, mask, lines_map
 
 if __name__ == '__main__':
     device = 'cuda'

@@ -1,5 +1,6 @@
 
 from cv2 import imshow
+from matplotlib import lines
 import numpy as np
 import onnxruntime
 import cv2
@@ -58,25 +59,28 @@ def export_onnx(model, im, file, opset, train=False, simplify=True, dynamic=Fals
 
 if __name__ == '__main__':
     batch_size, input_size = 1, 1024
-    device = 'cpu'
-    im = torch.zeros(batch_size, 3, input_size, input_size).to(device)
-    model_path = r'data/textdetector.pt'
-    model = TextDetBase(model_path, act=True).to(device)
+    # device = 'cpu'
+    # im = torch.zeros(batch_size, 3, input_size, input_size).to(device)
+    # model_path = r'data/textdetector.pt'
+    # model = TextDetBase(model_path, act=True).to(device)
 
     # export_onnx(model, im, model_path, 11)
 
-    img_path = r'000054.jpg'
+    img_path = r'data/dataset/manga101/003.jpg'
     img = cv2.imread(img_path)
     img, ratio, (dw, dh) = letterbox(img, new_shape=(1024, 1024), auto=False, stride=64)
     # img = img.transpose((2, 0, 1))[::-1]  # HWC to CHW, BGR to RGB
     # img = np.ascontiguousarray([img]) / 255.
     
-    model_path = r'data/textdetector.pt.onnx'
+    model_path = r'data/comictextdetector.pt.onnx'
     net = cv2.dnn.readNetFromONNX(model_path)
     blob = cv2.dnn.blobFromImage(img, scalefactor=1 / 255.0, size=(input_size, input_size))
-    net.setInput(blob)
+    # net.setInput(blob)
     t0 = time.time()
-    pred = net.forward(net.getUnconnectedOutLayersNames())
+    blks, mask, lines_map  = net.setInput(blob).forward(net.getUnconnectedOutLayersNames())
+    lines_map = lines_map[0][0]
+    cv2.imshow('liensmap', lines_map)
+    cv2.waitKey(0)
     print(f'{time.time()-t0}')
     # cuda = True
     # providers = ['CUDAExecutionProvider', 'CPUExecutionProvider'] if cuda else ['CPUExecutionProvider']
