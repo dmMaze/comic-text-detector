@@ -1,0 +1,15 @@
+*.pt
+*.zip
+*.7z
+*.rar
+*.ckpt
+*.onnx
+*.tar
+
+wandb
+data/backup
+data/dataset
+data/fonts
+data/font_statics*
+data/examples/annotations/*
+__pycache__

@@ -18,7 +18,7 @@ from utils.textmask import refine_mask, refine_undetected_mask, REFINEMASK_INPAI
 from pathlib import Path
 from typing import Union
 
-def model2annotations(model_path, img_dir_list, save_dir):
+def model2annotations(model_path, img_dir_list, save_dir, save_json=False):
     if isinstance(img_dir_list, str):
         img_dir_list = [img_dir_list]
     cuda = torch.cuda.is_available()
@@ -54,19 +54,20 @@ def model2annotations(model_path, img_dir_list, save_dir):
         # num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(mask)
         # _, mask = cv2.threshold(mask, 50, 255, cv2.THRESH_BINARY)
         # draw_connected_labels(num_labels, labels, stats, centroids)
-        visualize_textblocks(img, blk_list)
-        cv2.imshow('rst', img)
-        cv2.imshow('mask', mask)
-        cv2.imshow('mask_refined', mask_refined)
-        cv2.waitKey(0)
+        # visualize_textblocks(img, blk_list)
+        # cv2.imshow('rst', img)
+        # cv2.imshow('mask', mask)
+        # cv2.imshow('mask_refined', mask_refined)
+        # cv2.waitKey(0)
 
         if len(polys) != 0:
             if isinstance(polys, list):
                 polys = np.array(polys)
             polys = polys.reshape(-1, 8)
             np.savetxt(poly_save_path, polys, fmt='%d')
-        with open(osp.join(save_dir, imname+'.json'), 'w', encoding='utf8') as f:
-            f.write(json.dumps(blk_dict_list, ensure_ascii=False, cls=NumpyEncoder))
+        if save_json:
+            with open(osp.join(save_dir, imname+'.json'), 'w', encoding='utf8') as f:
+                f.write(json.dumps(blk_dict_list, ensure_ascii=False, cls=NumpyEncoder))
         cv2.imwrite(osp.join(save_dir, imgname), img)
         cv2.imwrite(osp.join(save_dir, maskname), mask_refined)
 
@@ -113,8 +114,6 @@ def postprocess_yolo(det, conf_thresh, nms_thresh, resize_ratio, sort_func=None)
     confs = np.round(det[..., 4], 3)
     cls = det[..., 5].astype(np.int32)
     return blines, cls, confs
-
-
 
 class TextDetector:
     lang_list = ['eng', 'ja', 'unknown']
@@ -200,6 +199,6 @@ if __name__ == '__main__':
     device = 'cpu'
     model_path = 'data/comictextdetector.pt'
     # model_path = 'data/comictextdetector.pt.onnx'
-    img_dir = r'data\examples'
-    save_dir = r'data\backup'
+    img_dir = r'data/examples'
+    save_dir = r'data/backup'
     model2annotations(model_path, img_dir, save_dir)

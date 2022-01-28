@@ -25,8 +25,8 @@ model:
   act: leaky
   weights: data/yolov5sblk.ckpt
 resume:
-  ckpt: data/unet_last.ckpt
-  resume_training: true
+  ckpt: ''
+  resume_training: false
 train:
   accumulation_steps: 4
   batch_size: 4

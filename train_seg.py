@@ -205,6 +205,6 @@ if __name__ == '__main__':
     hyp['train']['batch_size'] = 4
     hyp['logger']['type'] = 'wandb'
 
-    hyp['resume']['resume_training'] = True
-    hyp['resume']['ckpt'] = 'data/unet_last.ckpt'
+    # hyp['resume']['resume_training'] = True
+    # hyp['resume']['ckpt'] = 'data/unet_last.ckpt'
     train(hyp)

@@ -220,7 +220,7 @@ if __name__ == '__main__':
     hyp['train']['loss'] = 'bce'
     hyp['logger']['type'] =  'wandb'
 
-    hyp['resume']['resume_training'] = True
-    hyp['resume']['ckpt'] = 'data/db_last_bk.ckpt'
+    # hyp['resume']['resume_training'] = True
+    # hyp['resume']['ckpt'] = 'data/db_last_bk.ckpt'
     # hyp['model']['db_weights'] = r'data/db_last.ckpt'
     train(hyp)
