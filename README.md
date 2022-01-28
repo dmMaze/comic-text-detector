@@ -23,8 +23,7 @@ All models were trained on around 13 thousand anime & comic style images, 1/3 fr
 
 We used models from text detection of manga-image-translator to generate text lines annotations for manga, and [Manga-Text-Segmentation](https://github.com/juvian/Manga-Text-Segmentation) with some post-processing to generate masks for both manga and comics. Synthetic data were generated using around 4k text-free anime-girls pictures from https://t.me/SugarPic, text-rendering, Unet and DBNet training scripts can be found in this repo.  Text block detector was trained using [yolov5 official repository](https://github.com/ultralytics/yolov5)  
 
-We would not (don't have the right) share training sets or fonts publically, 2/3 of the training set is not so clean anyway, so the training is reproducible only if you have enough images and fonts, you can use the models this repo provided to generate labels for comics/manga, and the comic style text rendering script to generate synthetic data, please refer to examples.ipynb for more details. 
-
+We would not (don't have the right) share training sets or fonts publically, 2/3 of the training set is not so clean anyway, so the training is reproducible only if you have enough images and fonts, you can use the models this repo provided to generate labels for comics/manga, and the comic style text rendering script to generate synthetic data, please refer to [examples.ipynb](examples.ipynb) for more details. 
 
 ## Acknowledgements
 
