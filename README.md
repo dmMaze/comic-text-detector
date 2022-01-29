@@ -19,7 +19,7 @@ Our current model can be summarized as below.
 
 <img src='data/doc/model.jpg'>  
 
-All models were trained on around 13 thousand anime & comic style images, 1/3 from Manga109-s, 1/3 from DCM, and 1/3 are synthetic data in a weak supervision manner due to the lack of available high-quality annotations.   
+All models were trained on around 13 thousand anime & comic style images, 1/3 from Manga109-s, 1/3 from [DCM](https://digitalcomicmuseum.com/), and 1/3 are synthetic data in a weak supervision manner due to the lack of available high-quality annotations.   
 
 We used text detection model of manga-image-translator to generate text lines annotations for manga, and [Manga-Text-Segmentation](https://github.com/juvian/Manga-Text-Segmentation) with some post-processing to generate masks for both manga and comics. Synthetic data were generated using around 4k text-free anime-girls pictures from https://t.me/SugarPic, text-rendering, Unet and DBNet training scripts can be found in this repo.  Text block detector was trained using [yolov5 official repository](https://github.com/ultralytics/yolov5)  
 
