@@ -39,11 +39,10 @@ def find_all_imgs(img_dir, abs_path=False):
             imglist.append(filename)
     return imglist
 
-def imread(imgpath, read_type=cv2.IMREAD_COLOR):
-    # img = cv2.imread(imgpath, read_type)
-    # if img is None:
-    img = cv2.imdecode(np.fromfile(imgpath, dtype=np.uint8), read_type)
-    return img
+imread = lambda imgpath, read_type=cv2.IMREAD_COLOR: cv2.imdecode(np.fromfile(imgpath, dtype=np.uint8), read_type)
+# def imread(imgpath, read_type=cv2.IMREAD_COLOR):
+#     img = cv2.imdecode(np.fromfile(imgpath, dtype=np.uint8), read_type)
+#     return img
 
 def imwrite(img_path, img, ext='.png'):
     suffix = Path(img_path).suffix

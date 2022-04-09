@@ -28,6 +28,7 @@ import random
 from torch.utils.data import DataLoader, Dataset
 from utils.general import LOGGER, Loggers, CUDA, DEVICE
 from utils.imgproc_utils import resize_keepasp, letterbox
+from utils.io_utils import imread, imwrite
 
 WORLD_SIZE = int(os.getenv('WORLD_SIZE', 1))  # DPP
 NUM_THREADS = min(8, max(1, os.cpu_count() - 1))  # number of multiprocessing threads
@@ -68,13 +69,11 @@ def load_image_mask(self, i, max_size=None):
 
 def mini_mosaic(self, img, mask):
     im_h, im_w = img.shape[0], img.shape[1]
-    # img2 = cv2.imread(imp2, cv2.IMREAD_COLOR)
     idx = random.randint(0, len(self)-1)
     img2, mask2 = load_image_mask(self, idx, self.img_size)
     img2_h, img2_w = img2.shape[0], img2.shape[1]
     ratio = img2_h / im_h
     if img2_h > img2_w and ratio > 0.4 and ratio < 1.6:
-        # mask2 = cv2.imread(maskp2, cv2.IMREAD_GRAYSCALE)
         im_h = max(im_h, img2_h)
         im_w = im_w + img2_w
         im_tmp = np.zeros((im_h, im_w, 3), np.uint8)

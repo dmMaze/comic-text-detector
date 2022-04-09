@@ -1,4 +1,3 @@
-from importlib.resources import path
 import json
 from basemodel import TextDetBase, TextDetBaseDNN
 import os.path as osp
@@ -8,7 +7,6 @@ import cv2
 import torch
 from pathlib import Path
 import torch
-import onnxruntime
 from utils.yolov5_utils import non_max_suppression
 from utils.db_utils import SegDetectorRepresenter
 from utils.io_utils import imread, imwrite, find_all_imgs, NumpyEncoder
@@ -29,7 +27,7 @@ def model2annotations(model_path, img_dir_list, save_dir, save_json=False):
         imglist += find_all_imgs(img_dir, abs_path=True)
     for img_path in tqdm(imglist):
         imgname = osp.basename(img_path)
-        img = cv2.imread(img_path)
+        img = imread(img_path)
         im_h, im_w = img.shape[:2]
         imname = imgname.replace(Path(imgname).suffix, '')
         maskname = 'mask-'+imname+'.png'
@@ -68,8 +66,8 @@ def model2annotations(model_path, img_dir_list, save_dir, save_json=False):
         if save_json:
             with open(osp.join(save_dir, imname+'.json'), 'w', encoding='utf8') as f:
                 f.write(json.dumps(blk_dict_list, ensure_ascii=False, cls=NumpyEncoder))
-        cv2.imwrite(osp.join(save_dir, imgname), img)
-        cv2.imwrite(osp.join(save_dir, maskname), mask_refined)
+        imwrite(osp.join(save_dir, imgname), img)
+        imwrite(osp.join(save_dir, maskname), mask_refined)
 
 def preprocess_img(img, input_size=(1024, 1024), device='cpu', bgr2rgb=True, half=False, to_tensor=True):
     if bgr2rgb:
