@@ -20,16 +20,16 @@ data:
 logger:
   project: ''
   run_id: ''
-  type: wandb
+  type: null
 model:
-  act: leaky
+  act: true
   weights: data/yolov5sblk.ckpt
 resume:
   ckpt: ''
   resume_training: false
 train:
-  accumulation_steps: 4
-  batch_size: 4
+  accumulation_steps: 2
+  batch_size: 8
   epochs: 120
   eval_interval: 1
   linear_lr: false

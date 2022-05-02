@@ -20,7 +20,7 @@ class TextBlock(object):
                        vec: List = None,
                        norm: float = -1,
                        merged: bool = False,
-                       weight: float = -1,
+                       sort_weight: float = -1,
                        text: List = None,
                        translation: str = "",
                        fg_r = 0,
@@ -40,6 +40,7 @@ class TextBlock(object):
                        _bounding_rect: List = None,
                        accumulate_color = True,
                        default_stroke_width = 0.2,
+                       font_weight = 50, 
                        target_lang: str = "",
                        **kwargs) -> None:
         self.xyxy = [int(num) for num in xyxy]                    # boundingbox of textblock
@@ -53,7 +54,7 @@ class TextBlock(object):
         self.vec = None if vec is None else np.array(vec, np.float64) # primary vector of textblock
         self.norm = norm                    # primary norm of textblock
         self.merged = merged
-        self.weight = weight
+        self.sort_weight = sort_weight
 
         self.text = text if text is not None else []
         self.prob = 1
@@ -82,6 +83,7 @@ class TextBlock(object):
 
         self._bounding_rect = _bounding_rect
         self.default_stroke_width = default_stroke_width
+        self.font_weight = font_weight
         self.accumulate_color = accumulate_color
 
     def adjust_bbox(self, with_bbox=False):
@@ -300,8 +302,8 @@ def sort_textblk_list(blk_list: List[TextBlock], im_w: int, im_h: int) -> List[T
         grid_weights[np.where(grid_x >= num_gridx)] += img_area * num_gridy * num_gridx
     
     for blk, weight in zip(blk_list, grid_weights):
-        blk.weight = weight
-    blk_list.sort(key=lambda blk: blk.weight)
+        blk.sort_weight = weight
+    blk_list.sort(key=lambda blk: blk.sort_weight)
     return blk_list
 
 def examine_textblk(blk: TextBlock, im_w: int, im_h: int, eval_orientation: bool, sort: bool = False) -> None:
@@ -498,4 +500,3 @@ def visualize_textblocks(canvas, blk_list:  List[TextBlock]):
         cv2.putText(canvas, str(blk.angle), center, cv2.FONT_HERSHEY_SIMPLEX, 1, (127,127,255), 2)
         cv2.putText(canvas, str(ii), (bx1, by1 + lw + 2), 0, lw / 3, (255,127,127), max(lw-1, 1), cv2.LINE_AA)
     return canvas
-

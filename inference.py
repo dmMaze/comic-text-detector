@@ -14,7 +14,7 @@ from utils.imgproc_utils import letterbox, xyxy2yolo, get_yololabel_strings
 from utils.textblock import TextBlock, group_output, visualize_textblocks
 from utils.textmask import refine_mask, refine_undetected_mask, REFINEMASK_INPAINT, REFINEMASK_ANNOTATION
 from pathlib import Path
-from typing import Union
+from typing import Union, Tuple, List
 
 def model2annotations(model_path, img_dir_list, save_dir, save_json=False):
     if isinstance(img_dir_list, str):
@@ -69,10 +69,10 @@ def model2annotations(model_path, img_dir_list, save_dir, save_json=False):
         imwrite(osp.join(save_dir, imgname), img)
         imwrite(osp.join(save_dir, maskname), mask_refined)
 
-def preprocess_img(img, input_size=(1024, 1024), device='cpu', bgr2rgb=True, half=False, to_tensor=True):
+def preprocess_img(img, detect_size=(1024, 1024), device='cpu', bgr2rgb=True, half=False, to_tensor=True):
     if bgr2rgb:
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    img_in, ratio, (dw, dh) = letterbox(img, new_shape=input_size, auto=False, stride=64)
+    img_in, ratio, (dw, dh) = letterbox(img, new_shape=detect_size, auto=False, stride=64)
     if to_tensor:
         img_in = img_in.transpose((2, 0, 1))[::-1]  # HWC to CHW, BGR to RGB
         img_in = np.array([np.ascontiguousarray(img_in)]).astype(np.float32) / 255
@@ -117,39 +117,54 @@ class TextDetector:
     lang_list = ['eng', 'ja', 'unknown']
     langcls2idx = {'eng': 0, 'ja': 1, 'unknown': 2}
 
-    def __init__(self, model_path, input_size=1024, device='cpu', half=False, nms_thresh=0.35, conf_thresh=0.4, mask_thresh=0.3, act='leaky'):
+    def __init__(self, model_path, detect_size=1024, device='cpu', half=False, nms_thresh=0.35, conf_thresh=0.4):
         super(TextDetector, self).__init__()
         cuda = device == 'cuda'
 
-        if Path(model_path).suffix == '.onnx':
-            self.model = cv2.dnn.readNetFromONNX(model_path)
-            self.net = TextDetBaseDNN(input_size, model_path)
-            self.backend = 'opencv'
-        else:
-            self.net = TextDetBase(model_path, device=device, act=act)
-            self.backend = 'torch'
+        self.net: Union[TextDetBase, TextDetBaseDNN] = None
+        self.backend: str = None
         
-        if isinstance(input_size, int):
-            input_size = (input_size, input_size)
-        self.input_size = input_size
+        if isinstance(detect_size, int):
+            detect_size = (detect_size, detect_size)
+        self.detect_size = detect_size
         self.device = device
         self.half = half
         self.conf_thresh = conf_thresh
         self.nms_thresh = nms_thresh
         self.seg_rep = SegDetectorRepresenter(thresh=0.3)
 
+        self.backend = 'torch'
+        self.load_model(model_path)
+
+    def load_model(self, model_path: str):
+        if Path(model_path).suffix == '.onnx':
+            self.net = TextDetBaseDNN(1024, model_path)
+            self.backend = 'opencv'
+        else:
+            self.net = TextDetBase(model_path, device=self.device, act='leaky', half=self.half)
+            self.backend = 'torch'
+
+    # def set_device(self, device: str):
+    #     if self.device == device:
+    #         return
+    #     model_path = CTD_MODEL_PATH+'.onnx' if device == 'cpu' else CTD_MODEL_PATH
+    #     if not osp.exists(model_path):
+    #         raise FileNotFoundError(f'CTD model not found: {model_path}')
+    #     self.load_model(model_path)
+
     @torch.no_grad()
-    def __call__(self, img, refine_mode=REFINEMASK_INPAINT, keep_undetected_mask=False):
-        img_in, ratio, dw, dh = preprocess_img(img, input_size=self.input_size, device=self.device, half=self.half, to_tensor=self.backend=='torch')
+    def __call__(self, img, refine_mode=REFINEMASK_INPAINT, keep_undetected_mask=False) -> Tuple[np.ndarray, np.ndarray, List[TextBlock]]:
+        detect_size = self.detect_size if self.backend == 'torch' else (1024, 1024)
+        img_in, ratio, dw, dh = preprocess_img(img, detect_size=detect_size, device=self.device, half=self.half, to_tensor=self.backend=='torch')
 
         im_h, im_w = img.shape[:2]
 
         blks, mask, lines_map = self.net(img_in)
         
-        resize_ratio = (im_w / (self.input_size[0] - dw), im_h / (self.input_size[1] - dh))
+        resize_ratio = (im_w / (detect_size[0] - dw), im_h / (detect_size[1] - dh))
         blks = postprocess_yolo(blks, self.conf_thresh, self.nms_thresh, resize_ratio)
         mask = postprocess_mask(mask)
-        lines, scores = self.seg_rep(self.input_size, lines_map)
+        lines, scores = self.seg_rep(detect_size, lines_map)
         box_thresh = 0.6
         idx = np.where(scores[0] > box_thresh)
         lines, scores = lines[0][idx], scores[0][idx]

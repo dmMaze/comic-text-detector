@@ -19,18 +19,28 @@ TEXTDET_DET = 1
 TEXTDET_INFERENCE = 2
 
 class double_conv_up_c3(nn.Module):
-    def __init__(self, in_ch, mid_ch, out_ch, act=True):
+    def __init__(self, in_ch, mid_ch, out_ch, act=True, shrink=False, interpolate=False):
         super(double_conv_up_c3, self).__init__()
-        self.conv = nn.Sequential(
-        C3(in_ch+mid_ch, mid_ch, act=act),
-        nn.ConvTranspose2d(mid_ch, out_ch, kernel_size=4, stride = 2, padding=1, bias=False),
-        nn.BatchNorm2d(out_ch),
-        nn.ReLU(inplace=True),
-        )
+        self.interpolate = interpolate
+        if shrink:
+            self.conv = nn.Sequential(
+            nn.Conv2d(in_ch+mid_ch, mid_ch, 1, bias=False),
+            C3(mid_ch, mid_ch, act=act),
+            nn.ConvTranspose2d(mid_ch, out_ch, kernel_size=4, stride = 2, padding=1, bias=False),
+            nn.BatchNorm2d(out_ch),
+            nn.ReLU(inplace=True)
+            )
+        else:
+            self.conv = nn.Sequential(
+            C3(in_ch+mid_ch, mid_ch, act=act),
+            nn.ConvTranspose2d(mid_ch, out_ch, kernel_size=4, stride = 2, padding=1, bias=False),
+            nn.BatchNorm2d(out_ch),
+            nn.ReLU(inplace=True),
+            )
 
     def forward(self, x):
         return self.conv(x)
-
+        
 class double_conv_c3(nn.Module):
     def __init__(self, in_ch, out_ch, stride=1, act=True):
         super(double_conv_c3, self).__init__()
@@ -48,11 +58,21 @@ class UnetHead(nn.Module):
     def __init__(self, act=True) -> None:
 
         super(UnetHead, self).__init__()
-        self.down_conv1 = double_conv_c3(512, 512, 2, act=act)
-        self.upconv0 = double_conv_up_c3(0, 512, 256, act=act)
-        self.upconv2 = double_conv_up_c3(256, 512, 256, act=act)
-        self.upconv3 = double_conv_up_c3(0, 512, 256, act=act)
-        self.upconv4 = double_conv_up_c3(128, 256, 128, act=act)
+        # self.down_conv1 = double_conv_c3(512, 512, 2, act=act)
+        # self.upconv0 = double_conv_up_c3(0, 512, 256, act=act)
+        # self.upconv2 = double_conv_up_c3(256, 512, 256, act=act)
+        # self.upconv3 = double_conv_up_c3(0, 512, 256, act=act, shrink=True)
+        # self.upconv4 = double_conv_up_c3(128, 256, 128, act=act, shrink=True)
+        # self.upconv5 = double_conv_up_c3(64, 128, 64, act=act)
+        # self.upconv6 = nn.Sequential(
+        #     nn.ConvTranspose2d(64, 1, kernel_size=4, stride = 2, padding=1, bias=False),
+        #     nn.Sigmoid()
+        # )
+        # self.down_conv1 = double_conv_c3(512, 256, 2, act=act)
+        # self.upconv0 = double_conv_up_c3(0, 256, 256, act=act)
+        self.upconv2 = double_conv_up_c3(0, 512, 256, act=act)
+        self.upconv3 = double_conv_up_c3(0, 512, 256, act=act, shrink=True, interpolate=True)
+        self.upconv4 = double_conv_up_c3(128, 256, 128, act=act, shrink=True, interpolate=True)
         self.upconv5 = double_conv_up_c3(64, 128, 64, act=act)
         self.upconv6 = nn.Sequential(
             nn.ConvTranspose2d(64, 1, kernel_size=4, stride = 2, padding=1, bias=False),
@@ -61,9 +81,9 @@ class UnetHead(nn.Module):
 
     def forward(self, f160, f80, f40, f20, f3, forward_mode=TEXTDET_MASK):
         # input: 640@3
-        d10 = self.down_conv1(f3) # 512@10
-        u20 = self.upconv0(d10)  # 256@10
-        u40 = self.upconv2(torch.cat([f20, u20], dim = 1)) # 256@40
+        # d10 = self.down_conv1(f3) # 512@10
+        # u20 = self.upconv0(d10)  # 256@10
+        u40 = self.upconv2(f20) # 256@40
 
         if forward_mode == TEXTDET_DET:
             return f80, f40, u40
@@ -264,6 +284,8 @@ if __name__ == '__main__':
     model = TextDetector(weights, map_location=DEVICE)
     model.to(DEVICE)
     model.train_mask()
+
+
     summary(model, (3, 640, 640), device=DEVICE)
 
     # model.initialize_db(unet_weights='data/unet_head.pt')

@@ -6,6 +6,8 @@
 *.onnx
 *.tar
 
+dummy.ipynb
+log
 wandb
 data/backup
 data/dataset

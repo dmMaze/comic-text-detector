@@ -31,7 +31,7 @@ train:
 
 model:
   weights: 'data/yolov5sblk.ckpt'
-  act: 'leaky'
+  act: true
 
 logger:
   type: 'wandb'

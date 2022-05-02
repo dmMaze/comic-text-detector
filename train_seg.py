@@ -201,9 +201,9 @@ if __name__ == '__main__':
     hyp['train']['lrf'] = 0.005
     hyp['train']['weight_decay'] = 0.00002
     hyp['train']['epochs'] = 120
-    hyp['train']['accumulation_steps'] = 4
-    hyp['train']['batch_size'] = 4
-    hyp['logger']['type'] = 'wandb'
+    hyp['train']['accumulation_steps'] = 2
+    hyp['train']['batch_size'] = 8
+    hyp['logger']['type'] = None
 
     # hyp['resume']['resume_training'] = True
     # hyp['resume']['ckpt'] = 'data/unet_last.ckpt'
