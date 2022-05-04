@@ -30,6 +30,9 @@ from utils.general import LOGGER, Loggers, CUDA, DEVICE
 from utils.imgproc_utils import resize_keepasp, letterbox
 from utils.io_utils import imread, imwrite
 
+
+cv2.setNumThreads(0)
+
 WORLD_SIZE = int(os.getenv('WORLD_SIZE', 1))  # DPP
 NUM_THREADS = min(8, max(1, os.cpu_count() - 1))  # number of multiprocessing threads
 IMG_EXT = ['.bmp', '.jpg', '.png', '.jpeg']
@@ -57,6 +60,11 @@ def load_image_mask(self, i, max_size=None):
         img = cv2.imread(imp)
     if mask is None:
         mask = cv2.imread(maskp, cv2.IMREAD_GRAYSCALE)
+        dilate = True
+        e_size = 1
+        if dilate:
+            element = cv2.getStructuringElement(cv2.MORPH_RECT, (2 * e_size + 1, 2 * e_size + 1),(e_size, e_size))
+            mask = cv2.dilate(mask, element, iterations=1)
     if max_size is not None:
         if isinstance(max_size, tuple):
             max_size = max_size[0]
@@ -207,6 +215,7 @@ def create_dataloader(img_dir, mask_dir, imgsz, batch_size, augment=False, aug_p
     dataset = LoadImageAndMask(img_dir, mask_dir, imgsz, augment, aug_param, cache)
     batch_size = min(batch_size, len(dataset))
     nw = min([os.cpu_count() // WORLD_SIZE, batch_size if batch_size > 1 else 0, workers])  # number of workers
+
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, pin_memory=True, num_workers=nw)
     return dataset, loader
 
@@ -218,10 +227,12 @@ if __name__ == '__main__':
     hyp_p = r'data/train_hyp.yaml'
     with open(hyp_p, 'r', encoding='utf8') as f:
         hyp = yaml.safe_load(f.read())
-    hyp['data']['train_img_dir'] = [r'D:/neonbub/datasets/codat_manga_v3/images/train', r'D:/neonbub/datasets/ComicErased/processed']
-    hyp['data']['val_img_dir'] = [r'D:/neonbub/datasets/codat_manga_v3/images/val']
-    hyp['data']['train_mask_dir'] = r'D:/neonbub/datasets/ComicSegV2'
-    hyp['data']['val_mask_dir'] = r'D:/neonbub/datasets/ComicSegV2'
+    hyp['data']['train_img_dir'] = [r'../datasets/codat_manga_v3/images/train', r'../datasets/ComicErased/processed']
+    hyp['data']['train_img_dir'] = [r'../datasets/ComicErased/processed']
+    # hyp['data']['train_img_dir'] = [r'../datasets/codat_manga_v3/images/val']
+    hyp['data']['val_img_dir'] = [r'../datasets/codat_manga_v3/images/val']
+    hyp['data']['train_mask_dir'] = r'../datasets/ComicSegV2'
+    hyp['data']['val_mask_dir'] = r'../datasets/ComicSegV2'
     hyp['data']['cache'] = False
 
     hyp_train, hyp_data, hyp_model, hyp_logger, hyp_resume = hyp['train'], hyp['data'], hyp['model'], hyp['logger'], hyp['resume']

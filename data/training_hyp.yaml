@@ -29,7 +29,7 @@ resume:
   resume_training: false
 train:
   accumulation_steps: 2
-  batch_size: 8
+  batch_size: 24
   epochs: 120
   eval_interval: 1
   linear_lr: false

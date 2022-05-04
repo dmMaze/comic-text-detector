@@ -18,6 +18,9 @@ TEXTDET_MASK = 0
 TEXTDET_DET = 1
 TEXTDET_INFERENCE = 2
 
+
+
+
 class double_conv_up_c3(nn.Module):
     def __init__(self, in_ch, mid_ch, out_ch, act=True, shrink=False, interpolate=False):
         super(double_conv_up_c3, self).__init__()
@@ -286,7 +289,7 @@ if __name__ == '__main__':
     model.train_mask()
 
 
-    summary(model, (3, 640, 640), device=DEVICE)
+    summary(model, (3, 1024, 1024), device=DEVICE)
 
     # model.initialize_db(unet_weights='data/unet_head.pt')
     # model.train_db()
