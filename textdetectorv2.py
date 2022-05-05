@@ -57,9 +57,8 @@ class downconvc3(nn.Module):
 class DualPath(nn.Module):
     def __init__(self, hc: int, lc: int, act=True, downsample=None) -> None:
         super(DualPath, self).__init__()
-
-        # https://stackoverflow.com/questions/57025836/how-to-check-if-a-given-number-is-a-power-of-two
         div = lc // hc
+        # https://stackoverflow.com/questions/57025836/how-to-check-if-a-given-number-is-a-power-of-two
         assert (div & (div-1) == 0) and div != 0    # div must be power of 2
         h2l = [C3(hc, hc, act=act)]
         hc_tmp = hc
@@ -79,6 +78,53 @@ class DualPath(nn.Module):
         hdim = hmap.shape[-1]
         return hmap + F.interpolate(self.l2h(lmap), size=(hdim, hdim), mode='bilinear', align_corners=True), \
             self.downsample(lmap + self.h2l(hmap))
+
+class BnConv(nn.Module):
+    def __init__(self, in_ch: int, out_ch: int, ks: int = 1):
+        super(BnConv, self).__init__()
+        self.bn = nn.BatchNorm2d(in_ch, momentum=bn_mom)
+        self.act = nn.ReLU(inplace=True)
+        self.conv = nn.Conv2d(in_ch, out_ch, ks, bias=False)
+    def forward(self, x):
+        return self.conv(self.act(self.bn(x)))
+
+def avgpool_bnconv(in_ch: int, out_ch: int, k: int, s: int):
+    return nn.Sequential(
+        nn.AvgPool2d(k, s, s),
+        BnConv(in_ch, out_ch, ks=1)
+    )
+
+class ScaleFuseBranch(nn.Module):
+    def __init__(self, in_ch: int, branch_ch: int, k: int, s: int):
+        self.avgbnconv = avgpool_bnconv(in_ch, branch_ch, k, s)
+        self.fuseconv = BnConv(branch_ch, branch_ch, 1)
+
+    def forward(self, residual, x):
+        _, _, h, w = residual.shape
+        x = F.interpolate(self.avgbnconv(x), [h, w], mode='bilinear')
+        return self.fuseconv(residual + x)
+    
+class DAPPMEX(nn.Module):
+    def __init__(self, in_ch, branch_ch, out_ch, num_scale: int = 5):
+        super(DAPPMEX, self).__init__()
+        self.scale_list = nn.ModuleList()
+        self.scale_list.add_module(f'scale-1', BnConv(in_ch, out_ch, 1))
+        for ii in range(num_scale - 1):
+            i = ii + 2
+            self.scale_list.add_module(
+                f'scale-{i}',
+                ScaleFuseBranch(in_ch, branch_ch, 2**i + 1, 2**(i - 1))
+            )
+        self.scale_list.add_module(f'scale-{num_scale}', ScaleFuseBranch(in_ch, branch_ch, 1, 1))
+        self.shortcut = BnConv(in_ch, out_ch)
+        self.compression = BnConv(branch_ch * num_scale, out_ch)
+
+    def forward(self, x):
+        x_list = []
+        x_list.append(self.scale_list[0](x))
+        for layer in self.scale_list[1:]:
+            x_list.append(layer(x, x_list[-1]))
+        return self.compression(torch.cat(x_list, 1)) + self.shortcut(x)
 
 class DAPPM(nn.Module):
     def __init__(self, inplanes, branch_planes, outplanes):
@@ -258,13 +304,14 @@ if __name__ == '__main__':
     model.to(DEVICE)
     summary(model, (3, 1024, 1024), device=DEVICE)
 
-    with torch.no_grad():
-        model.eval()
-        input = torch.randn((1, 3, 1024, 1024))
-        import time
-        t0 = time.time()
-        out = model(input)
-        print(time.time() - t0)
-    pass
+    # with torch.no_grad():
+    #     model.eval()
+    #     input = torch.randn((1, 3, 1024, 1024))
+    #     import time
+    #     t0 = time.time()
+    #     out = model(input)
+    #     print(time.time() - t0)
+    # pass
 
-        
+    d = DAPPMEX(256, 128, 128)
+    print(d)
