@@ -131,7 +131,7 @@ class TextBlock(object):
         min_bbox = np.array([[min_x, min_y, max_x, min_y, max_x, max_y, min_x, max_y]])
         if angled and rotate_back:
             min_bbox = rotate_polygons(center, min_bbox, -self.angle)
-        return min_bbox.reshape(-1, 4, 2)
+        return min_bbox.reshape(-1, 4, 2).astype(np.int64)
 
     # equivalent to qt's boundingRect, ignore angle
     def bounding_rect(self):

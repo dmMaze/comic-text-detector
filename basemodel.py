@@ -1,4 +1,4 @@
-from matplotlib import lines
+
 from utils.general import CUDA, DEVICE
 from models.yolov5.yolo import Model
 import torch

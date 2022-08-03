@@ -13,3 +13,4 @@ data/fonts
 data/font_statics*
 data/examples/annotations/*
 __pycache__
+.vscode
