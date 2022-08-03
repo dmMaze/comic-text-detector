@@ -1,6 +1,6 @@
 This repository contains training scripts to train a text detector based on [manga-image-translator](https://github.com/zyddnys/manga-image-translator) which can extract bounding-boxes, text lines and segmentation of text from manga or comics to help further comics translation procedures such as text-removal, recognition, lettering, etc.  
 
-There are some awesome projects such as manga-image-translator, [manga_ocr](https://github.com/kha-white/manga_ocr), [SickZil-Machine](https://github.com/KUR-creative/SickZil-Machine) offer DL models to automize the remaining work, **we are working on a computer-aided comic/manga translation software which would (hopefully) put them together.**   
+There are some awesome projects such as manga-image-translator, [manga_ocr](https://github.com/kha-white/manga_ocr), [SickZil-Machine](https://github.com/KUR-creative/SickZil-Machine) offer DL models to automize the remaining work, <s>we are working on a computer-aided comic/manga translation software which would (hopefully) put them together.</s>  see [BallonsTranslator](https://github.com/dmMaze/BallonsTranslator)[WIP]
 
 Download the text detection model from https://github.com/zyddnys/manga-image-translator/releases/tag/beta-0.2.1 or [Google Drive](https://drive.google.com/drive/folders/1cTsXP5NYTCjhPVxwScdhxqJleHuIOyXG?usp=sharing). 
 
