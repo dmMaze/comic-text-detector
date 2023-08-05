@@ -313,7 +313,7 @@ def examine_textblk(blk: TextBlock, im_w: int, im_h: int, sort: bool = False) ->
         vertical = norm_v > norm_h
     else:
         vertical = norm_v > norm_h * 2
-    # calcuate distance between textlines and origin 
+    # calculate distance between textlines and origin 
     if vertical:
         primary_vec, primary_norm = v, norm_v
         distance_vectors = center_pnts - np.array([[im_w, 0]], dtype=np.float64)   # vertical manga text is read from right to left, so origin is (imw, 0)
