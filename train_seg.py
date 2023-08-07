@@ -167,7 +167,7 @@ def train(hyp):
             torch.save(last_ckpt, 'data/unet_last.ckpt')
             if best_f1 < f1:
                 best_f1 = f1
-                LOGGER.info(f'saveing model at epoch {epoch}, best val f1: {best_f1}')
+                LOGGER.info(f'saving model at epoch {epoch}, best val f1: {best_f1}')
                 shutil.copy2('data/unet_last.ckpt', 'data/unet_best.ckpt')
             LOGGER.info(f'epoch {epoch}/{epochs-1} loss: {m_loss} precision: {precision} recall: {recall}')
             if logger is not None:

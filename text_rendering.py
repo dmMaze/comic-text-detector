@@ -304,8 +304,8 @@ def cls2lang(cls: int) -> str:
     return list(LANG_DICT.keys())[cls]
 
 def get_max_var_color(mean_bgcolor):
-    color_canditate = np.clip(np.array([mean_bgcolor-127, mean_bgcolor+127]), 0, 255).astype(np.int64)
-    max_var_color = [c[0] if abs(c[0]-mean_bgcolor[ii]) > abs(c[1]-mean_bgcolor[ii]) else c[1] for ii, c in enumerate(zip(color_canditate[0], color_canditate[1]))]
+    color_candidate = np.clip(np.array([mean_bgcolor-127, mean_bgcolor+127]), 0, 255).astype(np.int64)
+    max_var_color = [c[0] if abs(c[0]-mean_bgcolor[ii]) > abs(c[1]-mean_bgcolor[ii]) else c[1] for ii, c in enumerate(zip(color_candidate[0], color_candidate[1]))]
     max_var_color = (max_var_color[0], max_var_color[1], max_var_color[2])
     return max_var_color
 
@@ -355,8 +355,8 @@ class ComicTextSampler:
                 if im_in is not None:
                     mean_bgcolor = np.mean(im_in[y1: y2, x1: x2], axis=(0, 1))
                     max_var_color = get_max_var_color(mean_bgcolor)
-                    # color_canditate = np.clip(np.array([mean_bgcolor-127, mean_bgcolor+127]), 0, 255).astype(np.int64)
-                    # max_var_color = [c[0] if abs(c[0]-mean_bgcolor[ii]) > abs(c[1]-mean_bgcolor[ii]) else c[1] for ii, c in enumerate(zip(color_canditate[0], color_canditate[1]))]
+                    # color_candidate = np.clip(np.array([mean_bgcolor-127, mean_bgcolor+127]), 0, 255).astype(np.int64)
+                    # max_var_color = [c[0] if abs(c[0]-mean_bgcolor[ii]) > abs(c[1]-mean_bgcolor[ii]) else c[1] for ii, c in enumerate(zip(color_candidate[0], color_candidate[1]))]
                     # max_var_color = (max_var_color[0], max_var_color[1], max_var_color[2])
                     if color == 'black':
                         color_rep = np.array([0, 0, 0])

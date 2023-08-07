@@ -98,9 +98,9 @@ def merge_mask_list(mask_list, pred_mask, blk: TextBlock = None, pred_thresh=30,
                     continue
                 x1, y1, x2, y2 = x, y, x+w, y+h
                 label_local = labels[y1: y2, x1: x2]
-                label_cordinates = np.where(label_local==label_index)
+                label_coordinates = np.where(label_local==label_index)
                 tmp_merged = np.zeros_like(label_local, np.uint8)
-                tmp_merged[label_cordinates] = 255
+                tmp_merged[label_coordinates] = 255
                 tmp_merged = cv2.bitwise_or(mask_merged[y1: y2, x1: x2], tmp_merged)
                 xor_merged = cv2.bitwise_xor(tmp_merged, pred_mask[y1: y2, x1: x2]).sum()
                 xor_origin = cv2.bitwise_xor(mask_merged[y1: y2, x1: x2], pred_mask[y1: y2, x1: x2]).sum()
@@ -121,9 +121,9 @@ def merge_mask_list(mask_list, pred_mask, blk: TextBlock = None, pred_thresh=30,
         if area < area_thresh:
             x1, y1, x2, y2 = x, y, x+w, y+h
             label_local = labels[y1: y2, x1: x2]
-            label_cordinates = np.where(label_local==label_index)
+            label_coordinates = np.where(label_local==label_index)
             tmp_merged = np.zeros_like(label_local, np.uint8)
-            tmp_merged[label_cordinates] = 255
+            tmp_merged[label_coordinates] = 255
             tmp_merged = cv2.bitwise_or(mask_merged[y1: y2, x1: x2], tmp_merged)
             xor_merged = cv2.bitwise_xor(tmp_merged, pred_mask[y1: y2, x1: x2]).sum()
             xor_origin = cv2.bitwise_xor(mask_merged[y1: y2, x1: x2], pred_mask[y1: y2, x1: x2]).sum()
@@ -196,14 +196,14 @@ def refine_mask(img: np.ndarray, pred_mask: np.ndarray, blk_list: List[TextBlock
 #                 area *= 255
 #                 x1, y1, x2, y2 = x, y, x+w, y+h
 #                 label_local = labels[y1: y2, x1: x2]
-#                 label_cordinates = np.where(label_local==label_index)
+#                 label_coordinates = np.where(label_local==label_index)
 #                 tmp_merged = np.zeros((h, w), np.uint8)
-#                 tmp_merged[label_cordinates] = 255
+#                 tmp_merged[label_coordinates] = 255
 #                 andmap = cv2.bitwise_and(tmp_merged, pred_textmsk[y1: y2, x1: x2])
 #                 text_score = andmap.sum() / area
 #                 if text_score > text_score_thresh:
 #                     text_labels.append(label_index)
-#                     hyp_textmsk[y1: y2, x1: x2][label_cordinates] = 255
+#                     hyp_textmsk[y1: y2, x1: x2][label_coordinates] = 255
 #     labels = label_unchanged
 #     bubble_msk = np.zeros((img.shape[0], img.shape[1]), np.uint8)
 #     bubble_msk[np.where(labels==0)] = 255
@@ -216,7 +216,7 @@ def refine_mask(img: np.ndarray, pred_mask: np.ndarray, blk_list: List[TextBlock
 #     brect_area_thresh = im_h * im_w * 0.4
 #     min_brect_area = np.inf
 #     ballon_index = -1
-#     maxium_pixsum = -1
+#     maximum_pixsum = -1
 #     for ii, contour in enumerate(contours):
 #         brect = cv2.boundingRect(contours[ii])
 #         brect_area = brect[2] * brect[3]
@@ -224,8 +224,8 @@ def refine_mask(img: np.ndarray, pred_mask: np.ndarray, blk_list: List[TextBlock
 #             tmp_ballonmsk = np.zeros_like(bubble_msk)
 #             tmp_ballonmsk = cv2.drawContours(tmp_ballonmsk, contours, ii, WHITE, cv2.FILLED)
 #             andmap_sum = cv2.bitwise_and(tmp_ballonmsk, hyp_textmsk).sum()
-#             if andmap_sum > maxium_pixsum:
-#                 maxium_pixsum = andmap_sum
+#             if andmap_sum > maximum_pixsum:
+#                 maximum_pixsum = andmap_sum
 #                 min_brect_area = brect_area
 #                 ballon_index = ii
 #     if ballon_index != -1:
